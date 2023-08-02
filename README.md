@@ -69,4 +69,4 @@ Feel free to modify the script to suit your specific requirements. Happy botting
 
 ## License
 
-Este proyecto está bajo la Licencia [Creative Commons Attribution-NonCommercial 4.0 International License](https://creativecommons.org/licenses/by-nc/4.0/deed.es). Puedes obtener más información en el archivo [LICENSE](LICENSE).
+This project is licensed under the [Creative Commons Attribution-NonCommercial 4.0 International License](https://creativecommons.org/licenses/by-nc/4.0/deed.es). Puedes You can get more information in the [LICENSE](LICENSE) file.
