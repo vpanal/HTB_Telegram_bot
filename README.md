@@ -9,7 +9,7 @@ This script is a Telegram bot written in Python using the `python-telegram-bot` 
 Install the required packages using the following command:
 
 ```bash
-pip install -r results.txt
+pip install -r requeriments.txt
 ```
 
 ## Configuration
