@@ -1,263 +1,191 @@
 # -<b>- coding: utf-8 -<b>-
-from telegram.ext import (Updater, CommandHandler, CallbackQueryHandler, MessageHandler, Filters)
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton, Bot
+from telegram.ext import (Updater, CommandHandler, CallbackQueryHandler)
+from telegram import InlineKeyboardMarkup, InlineKeyboardButton
 import requests
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
+import threading
 
-#-------Modifica esto para que funcione-------#
-#URL Documentacion
-#https://documentation.example
+# Inicialización de variables de entorno
+challenge_category = []
+challenge_list = []
+machine_list = []
+machine_unreleased = []
+profile = {}
+profile_activity = {}
+profile_challenges = {}
+cache_date=datetime(2023, 8, 1, 10, 30)
+
+#######Modify this to work#######
+
 #IDs de chat de telegram permitidas
-allowed_list=(idchat, idchat) 
+allowed_list=(idchat, idchat)
+#IDs de chat de telegram permitidas
+admin_list=(idchat, idchat)
 #Token de bot de telegram
 TOKEN='Token de bot de telegram'
-#Bearer Token de HTB
-bearer='Bearer Token de HTB'
 #Usernames y ID de usuarios de HTB
 users_ids = [{'user': 'username', 'id': 'idnumer'}, {'user': 'username', 'id': 'idnumer'}]
 
-###############################################
+#Bearer Token de HTB
+bearer='BearerToken'
 
-headers = {"Authorization": "Bearer " + bearer, "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:102.0) Gecko/20100101 Firefox/102.0", "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.5", "Accept-Encoding": "gzip, deflate", "Upgrade-Insecure-Requests": "1", "Sec-Fetch-Dest": "document", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "none", "Sec-Fetch-User": "?1", "Te": "trailers", "Connection": "close"}
-#All
-def handle_message(update, context):
-	if update.message.chat_id in allowed_list:
-		comando =str(update.message.text).split(" ")
-		comando = comando[0]
-		match comando:
-			case _:
-				if comando[0]=='/':
-					result = '<b>Unknown command, you can find my guide at:</b>\n/help'
-					update.message.reply_text(result,parse_mode='HTML', disable_web_page_preview=True)
-	else:
-		response = 'You are not authorized'
-		update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)	
+proxy = {
+}
 
-def profile(uid):
-    url = "https://www.hackthebox.com/api/v4/user/profile/basic/"+uid
-    payload = {}
-    global headers
-    response = requests.request("GET", url, headers=headers, data=payload)
-    #Charge json
-    profile = json.loads(response.text).get('profile')
-    # Print Release Machines
-    name = profile.get('name')
-    rank = profile.get('rank')
-    points = profile.get('points')
-    user_owns = profile.get('user_owns')
-    system_owns = profile.get('system_owns')
-    userdata = "<b>" + str(name) + "</b>\nRank: " + str(rank) + "\nPoints: " + str(points) + "\nUser Owns: " + str(user_owns) + "\nSystem Owns: " + str(system_owns)
-    userdata= str(userdata)
-    return userdata
+#######HTB API#######
 
-def check_id(mid):
-    global users_ids
-    result = ''
-    for user_id in users_ids:
-        username, uid = user_id['user'], user_id['id']
-        url = 'https://www.hackthebox.com/api/v4/profile/activity/' + str(uid)
-        payload = {}
-        global headers
-        response = requests.request("GET", url, headers=headers, data=payload)
-        data = json.loads(response.text)
-        profile = data.get("profile", {})
-        activity = profile.get("activity", [])
-        user = 'No'
-        root = 'No'
-        for item in activity:
-            if item.get("id") == mid:
-                if item.get('type') == 'user':
-                    user = 'Yes'
-                elif item.get('type') == 'root':
-                    root = 'Yes'
-        result = result + ' \n' + username + ' Usered: ' + user + ' \n' + username + ' Rooted: ' + root
+#HTB Profile basic info
+def htb_profile(uid):
+    url = "https://www.hackthebox.com/api/v4/user/profile/basic/" + str(uid)
+    result = htb_request(url)
+    result = json.loads(result.text).get('profile')
     return result
 
-#Main menu
-def start(update, context):
-	if update.message.chat_id in allowed_list:
-		response = "Choose action:"
-		keyboard = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("Active", callback_data="Active"),
-                InlineKeyboardButton("Unreleased", callback_data="Unreleased")
-            ],
-            [
-                InlineKeyboardButton("Release", callback_data="Release"),
-                InlineKeyboardButton("Documentation", url="https://documentation.example")
-            ],
-            [
-                InlineKeyboardButton("Users", callback_data="umenu")
-            ]
-		])
-		context.bot.send_message(update.message.chat_id,response, reply_markup=keyboard)
-	else:
-		response = 'You are not authorized'
-		update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)
+#HTB Profile challenges info
+def htb_profile_challenges(uid):
+    url = "https://www.hackthebox.com/api/v4/profile/progress/challenges/" + str(uid)
+    result = htb_request(url)
+    result = json.loads(result.text).get('profile')
+    return result
 
-#Options of menu
-def handle_callback(update, context):
+#HTB Profile Activity info
+def htb_profile_activity(uid):
+    url = "https://www.hackthebox.com/api/v4/profile/activity/" + str(uid)
+    result = htb_request(url)
+    result = json.loads(result.text).get('profile')
+    return result
 
-    #Query
-    query = update.callback_query
-    data=query.data
-    chat_id = query.message.chat_id
-    message_id = query.message.message_id
+#HTB Unreleased Machines info
+def htb_machine_unreleased():
+    url = "https://www.hackthebox.com/api/v4/machine/unreleased"
+    result = htb_request(url)
+    result = json.loads(result.text).get('data')
+    return result
 
-    #If allowed
-    if query.message.chat_id in allowed_list:
+#HTB Active Machines info
+def htb_machine_list():
+    url="https://www.hackthebox.com/api/v4/machine/list"
+    result = htb_request(url)
+    result = json.loads(result.text).get('info')
+    return result
 
-        #Request
-        if(data=='Unreleased'):
-            url = 'https://www.hackthebox.com/api/v4/machine/unreleased'
-        else:
-            url = "https://www.hackthebox.com/api/v4/machine/list"
-        payload = {}
-        global headers
-        response = requests.request("GET", url, headers=headers, data=payload)
-		
-		#Charge json
-        json_data = json.loads(response.text)
-		
-        #Buton main                
-        keyboardmain = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("<< Back", callback_data='start')
-            ]
-        ])
+#HTB Active Challenges info
+def htb_challenge_list():
+    url="https://www.hackthebox.com/api/v4/challenge/list"
+    result = htb_request(url)
+    result = json.loads(result.text).get('challenges')
+    return result
+
+#HTB Challenge Categories
+def htb_challenge_categories_list():
+    url="https://www.hackthebox.com/api/v4/challenge/categories/list"
+    result = htb_request(url)
+    result = json.loads(result.text).get('info')
+    return result
+
+#HTB Fortresses
+def htb_fortresses():
+    url="https://www.hackthebox.com/api/v4/fortresses"
+    result = htb_request(url)
+    result = json.loads(result.text).get('data')
+    return result
+
+#HTB Requests to API
+def htb_request(url):
+    headers = {"Authorization": "Bearer " + bearer, "User-Agent": "htb_python"}
+    response = requests.request("GET", url, headers=headers, proxies=proxy, verify=False)
+    return response
+
+#######Telegram Menus#######
+
+#Menu start
+menu_main = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("Active", callback_data="menu_active"),
+        InlineKeyboardButton("Unreleased", callback_data="menu_unreleased")
+    ],
+    [
+        InlineKeyboardButton("Machines", callback_data="menu_machine_difficulty"),
+        InlineKeyboardButton("Fortresses", callback_data="menu_fortresses")
+    ],
+    [
+        InlineKeyboardButton("Challenges", callback_data="menu_challenge_category"),
+        InlineKeyboardButton("Users", callback_data="menu_user")
+    ],
+    [
+        InlineKeyboardButton("Notion", url="https://vpm-pentesting.notion.site/HTB-d657ca37204f4ca5afe964e9d8e4ab76?pvs=4")
+    ]
+])
+
+#Menu active machine
+def menu_active():
+     # Ordenar los datos por fecha descendente
+    sorted_data = sorted(machine_list, key=lambda x: x['release'], reverse=True)
+
+    # Obtener la primera máquina (la de fecha más alta)
+    latest_machine = sorted_data[0]
+
+    # Obtener los detalles de la máquina
+    name = latest_machine['name']
+    operating_system = latest_machine['os']
+    difficulty = latest_machine['difficultyText']
+    ip = latest_machine['ip']
+    id = latest_machine['id']
+    users = latest_machine['user_owns_count']
+    roots = latest_machine['root_owns_count']
+
+    # Mostrar los detalles de la máquina
+    result = "<b>" + str(name) + "</b>\nOS: " + str(operating_system) + "\nDifficulty: " + str(difficulty) + "\nIP: " + str(ip) + "\nUsers: " + str(users) + "\nRoot: " + str(roots) + check_user_complete(id, 'machine')
+    return result
+
+#menu unreleased machine
+def menu_unreleased():
+    result=''
+    for entry in machine_unreleased:
+        date = entry['release'].split('T')[0]
+        date = datetime.strptime(date, "%Y-%m-%d").strftime("%d-%m-%Y")
+        name = entry['name']
+        operating_system = entry['os']
+        difficulty = entry['difficulty_text']
+        result= result +"<b>" + str(date) + "</b>\nName: " + str(name) + "\nOS: " + str(operating_system) + "\nDifficulty: <b>" + str(difficulty) + "</b>\n\n"
+    return result
+
+#Menu machine difficulty
+menu_machine_difficulty = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("Easy", callback_data="menu_machines_Easy"),
+        InlineKeyboardButton("Medium", callback_data="menu_machines_Medium")
+    ],
+    [
+        InlineKeyboardButton("Hard", callback_data="menu_machines_Hard"),
+        InlineKeyboardButton("Insane", callback_data="menu_machines_Insane")
+    ],
+    [
+        InlineKeyboardButton("<< Back", callback_data="menu_main")
+    ]
+])
+
+#Menu machines
+def menu_machine(idifficulty):
+    names = ''
+    keyboard_buttons = []
+
+    for entry in machine_list:
+        name = entry['name']
+        difficulty = entry['difficultyText']
         
-        if(data in ('Easy', 'Medium', 'Hard', 'Insane')):
-            data='diff'
-        else:
-            for user_id in users_ids:
-                if user_id['id'] == data:
-                    uid=data
-                    data='user'
-        match data:
-            #Main menu
-            case "start":
-                response = "Choose action:"
-                keyboard = InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton("Active", callback_data="Active"),
-                        InlineKeyboardButton("Unreleased", callback_data="Unreleased")
-                    ],
-                    [
-                        InlineKeyboardButton("Release", callback_data="Release"),
-                        InlineKeyboardButton("Documentation", url="https://https://documentation.example")
-                    ],
-                    [
-                        InlineKeyboardButton("Users", callback_data="umenu")
-                    ]
-                ])
-                context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=response, reply_markup=keyboard, parse_mode='HTML')
-            
-            #Machines menu
-            case "diff":
-                selected_difficulty = query.data
-                keyboard=secondarymenu(selected_difficulty, json_data)
-                response = "Choose the machine:"
-                context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=response, reply_markup=keyboard, parse_mode='HTML')
-            
-            #Active machine
-            case "Active":
-                # Ordenar los datos por fecha descendente
-                sorted_data = sorted(json_data['info'], key=lambda x: x['release'], reverse=True)
+        if difficulty == idifficulty:
+            names += name + '\n'
+            keyboard_buttons.append(InlineKeyboardButton(name, callback_data=f"menu_machine_info_{name}"))
+    keyboard_buttons.append(InlineKeyboardButton("<< Back", callback_data="menu_machine_difficulty"))
+    keyboard = InlineKeyboardMarkup([keyboard_buttons[i:i+2] for i in range(0, len(keyboard_buttons), 2)])
+    return keyboard
 
-                # Obtener la primera máquina (la de fecha más alta)
-                latest_machine = sorted_data[0]
-
-                # Obtener los detalles de la máquina
-                name = latest_machine['name']
-                operating_system = latest_machine['os']
-                difficulty = latest_machine['difficultyText']
-                ip = latest_machine['ip']
-                id = latest_machine['id']
-                users = latest_machine['user_owns_count']
-                roots = latest_machine['root_owns_count']
-
-                # Mostrar los detalles de la máquina
-                result = "<b>" + str(name) + "</b>\nOS: " + str(operating_system) + "\nDifficulty: " + str(difficulty) + "\nIP: " + str(ip) + "\nUsers: " + str(users) + "\nRoot: " + str(roots) + check_id(id)
-                chat_id = query.message.chat_id
-                message_id = query.message.message_id
-                context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=result, reply_markup=keyboardmain, parse_mode='HTML')
-
-            #Unreleased machines
-            case "Unreleased":
-                # Print Unreleased Machines
-                result=''
-                for entry in json_data['data']:
-                    date = entry['release'].split('T')[0]
-                    date = datetime.strptime(date, "%Y-%m-%d").strftime("%d-%m-%Y")
-                    name = entry['name']
-                    operating_system = entry['os']
-                    difficulty = entry['difficulty_text']
-                    result= result +"<b>" + str(date) + "</b>\nName: " + str(name) + "\nOS: " + str(operating_system) + "\nDifficulty: <b>" + str(difficulty) + "</b>\n\n"
-                context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=result, reply_markup=keyboardmain, parse_mode='HTML')
-
-            #Difficulty menu
-            case "Release":
-                response = "Choose the difficulty:"
-                keyboard = InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton("Easy", callback_data="Easy"),
-                        InlineKeyboardButton("Medium", callback_data="Medium")
-                    ],
-                    [
-                        InlineKeyboardButton("Hard", callback_data="Hard"),
-                        InlineKeyboardButton("Insane", callback_data="Insane")
-                    ],
-                    [
-                        InlineKeyboardButton("<< Back", callback_data="start")
-                    ]
-                ])
-                context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=response, reply_markup=keyboard, parse_mode='HTML')
-
-            case 'user':
-                response=profile(uid)
-                keyboard = InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton("<< Back", callback_data="umenu")
-                    ]
-                ])
-                context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=response, reply_markup=keyboard, parse_mode='HTML')
-
-            case 'umenu':
-                response = "Choose the user:"
-                keyboard_buttons = []
-                for user_id in users_ids:
-                    user_name = user_id['user']
-                    user_callback_data = user_id['id']
-                    keyboard_buttons.append([InlineKeyboardButton(user_name, callback_data=user_callback_data)])
-
-                keyboard_buttons.append([InlineKeyboardButton("<< Back", callback_data="start")])
-                keyboard = InlineKeyboardMarkup(keyboard_buttons)
-
-                context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=response, reply_markup=keyboard, parse_mode='HTML')
-
-            case _:
-                result=show(query.data, json_data)
-                text = result[0]
-                keyboard = InlineKeyboardMarkup([
-                    [
-                        InlineKeyboardButton("<< Back", callback_data=result[1])
-                    ]
-                ])
-                chat_id = query.message.chat_id
-                message_id = query.message.message_id
-                context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode='HTML')
-    else:
-        response = 'You are not authorized'
-        chat_id = query.message.chat_id
-        message_id = query.message.message_id
-        query.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)
-
-
-#Show machine info
-def show(iname,json_data):
+#Menu machine info
+def menu_machine_info(iname):
     # Print Release Machines
-    for entry in json_data['info']:
+    for entry in machine_list:
         id = entry['id']
         date = entry['release'].split('T')[0]
         date = datetime.strptime(date, "%Y-%m-%d").strftime("%d-%m-%Y")
@@ -268,46 +196,435 @@ def show(iname,json_data):
         users = entry['user_owns_count']
         roots = entry['root_owns_count']
         if name == iname:
-            results="<b>" + str(name) + "</b>\nOS: " + str(operating_system) + "\nDifficulty: " + str(difficulty) + "\nIP: " + str(ip) + "\nDate: " + str(date) + "\nUser Number: " + str(users) + "\nRoot Number: " + str(roots) + check_id(id)
+            results="<b>" + str(name) + "</b>\nOS: " + str(operating_system) + "\nDifficulty: " + str(difficulty) + "\nIP: " + str(ip) + "\nDate: " + str(date) + "\nUser Number: " + str(users) + "\nRoot Number: " + str(roots) + check_user_complete(id, 'machine')
             result = [
                 results,
-                str(difficulty)
+                str('menu_machines_'+difficulty)
             ]
             return result
 
-#Machines menu
-def secondarymenu(idifficulty, json_data):
+#Menu challenge category
+def menu_challenge_category():
+    keyboard_buttons = []
+    for item in challenge_category:
+        name = item['name']
+        id = item['id']
+        keyboard_buttons.append(InlineKeyboardButton(name, callback_data=f"menu_challenge_difficulty_{id}"))
+
+    keyboard_buttons.append(InlineKeyboardButton("<< Back", callback_data="menu_main"))
+    keyboard = InlineKeyboardMarkup([keyboard_buttons[i:i+2] for i in range(0, len(keyboard_buttons), 2)])
+    challenge_category_menu = keyboard
+    return challenge_category_menu
+
+#Menu challenge difficulty
+def menu_challenge_difficulty(id):
+    result = InlineKeyboardMarkup([
+    [
+        InlineKeyboardButton("Very Easy", callback_data=f"menu_challenges_Very Easy_{id}"),
+        InlineKeyboardButton("Easy", callback_data=f"menu_challenges_Easy_{id}"),
+        InlineKeyboardButton("Medium", callback_data=f"menu_challenges_Medium_{id}")
+    ],
+    [
+        InlineKeyboardButton("Hard", callback_data=f"menu_challenges_Hard_{id}"),
+        InlineKeyboardButton("Insane", callback_data=f"menu_challenges_Insane_{id}")
+    ],
+    [
+        InlineKeyboardButton("<< Back", callback_data="menu_challenge_category")
+    ]
+    ])
+    return result
+
+#Menu challenges
+def menu_challenge(icategory, idifficulty):
     names = ''
     keyboard_buttons = []
 
-    for entry in json_data['info']:
+    for entry in challenge_list:
         name = entry['name']
-        difficulty = entry['difficultyText']
+        difficulty = entry['difficulty']
+        category = entry['challenge_category_id']
         
         if difficulty == idifficulty:
-            names += name + '\n'
-            keyboard_buttons.append(InlineKeyboardButton(name, callback_data=name))
+            if category == icategory:
+                names += name + '\n'
+                keyboard_buttons.append(InlineKeyboardButton(name, callback_data=f"menu_challenge_info_{name}"))
 
-    keyboard_buttons.append(InlineKeyboardButton("<< Back", callback_data="Release"))
+    keyboard_buttons.append(InlineKeyboardButton("<< Back", callback_data=f"menu_challenge_difficulty_{icategory}"))
     keyboard = InlineKeyboardMarkup([keyboard_buttons[i:i+2] for i in range(0, len(keyboard_buttons), 2)])
 
     return keyboard
 
-#Help
+#Menu challenge info
+def menu_challenge_info(iname):
+    # Print Release Challenges
+    for entry in challenge_list:
+        id = entry['id']
+        date = entry['release_date'].split('T')[0]
+        date = datetime.strptime(date, "%Y-%m-%d").strftime("%d-%m-%Y")
+        name = entry['name']
+        category = entry['challenge_category_id']
+        difficulty = entry['difficulty']
+        solves = entry['solves']
+        if name == iname:
+            results="<b>" + str(name) + "</b>\nCategory: " + check_challenge_category_name(category) + "\nDifficulty: " + str(difficulty) + "\nDate: " + str(date) + "\nSolves Number: " + str(solves) + check_user_complete(id, 'challenge')
+            result = [
+                results,
+                str('menu_challenges_'+str(difficulty)+'_'+str(category))
+            ]
+            return result
+
+#Menu user
+def menu_user_function():
+    keyboard_buttons = []
+    for user_id in users_ids:
+        user_name = user_id['user']
+        user_callback_data = user_id['id']
+        keyboard_buttons.append([InlineKeyboardButton(user_name, callback_data=user_callback_data)])
+
+    keyboard_buttons.append([InlineKeyboardButton("<< Back", callback_data="menu_main")])
+    keyboard = InlineKeyboardMarkup(keyboard_buttons)
+    return keyboard
+menu_user=menu_user_function()
+
+#Menu user info
+def menu_user_info(uid):
+
+    # Print Release Machines
+    name = profile[uid].get('name')
+    rank = profile[uid].get('rank')
+    points = profile[uid].get('points')
+    user_owns = profile[uid].get('user_owns')
+    system_owns = profile[uid].get('system_owns')
+    ranking = profile[uid].get('ranking')
+    challenges = profile_challenges[uid]["challenge_owns"]["solved"]
+    htbpwn= profile[uid].get('rank_ownership')
+    userdata = f"<b>{name}</b>\nID: {uid}\nRank: {rank}\nGlobal Ranking: {ranking}\nPoints: {points}\nUser Owns: {user_owns}\nSystem Owns: {system_owns}\nSolved Challenges: {challenges}\nHTB Pwned: {htbpwn}%"
+    userdata= str(userdata)
+    return userdata
+
+#Menu fortresses
+def menu_fortresses():
+    data = fortresses
+    keyboard_buttons = []
+
+    for fortress_id, entry in data.items():
+        name = entry['name']
+        callback_data = f"menu_fortresses_info_{entry['id']}"  # Incluyendo el ID en callback_data
+        keyboard_buttons.append(InlineKeyboardButton(name, callback_data=callback_data))
+
+    keyboard_buttons.append(InlineKeyboardButton("<< Back", callback_data="menu_main"))
+    keyboard = InlineKeyboardMarkup([keyboard_buttons[i:i+2] for i in range(0, len(keyboard_buttons), 2)])
+
+    return keyboard
+
+#Menu fortresses
+def menu_fortresses_info(id):
+    data = fortresses
+    name = 'eRroR'
+    totalflags = 'error'
+    for fortress_id, entry in data.items():
+        if int(entry['id']) == int(id):
+            name = entry['name']
+            totalflags = entry['number_of_flags']
+    fortresdata = f"<b>{name}</b>\nNumber of flags: {totalflags}" + check_user_complete(id, 'fortress')
+    return fortresdata
+
+#######Other functions#######
+
+#Cache HTB data
+def cache():
+    def get_challenge_category():
+        global challenge_category
+        challenge_category = htb_challenge_categories_list()
+
+    def get_challenge_list():
+        global challenge_list
+        challenge_list = htb_challenge_list()
+
+    def get_machine_list():
+        global machine_list
+        machine_list = htb_machine_list()
+
+    def get_machine_unreleased():
+        global machine_unreleased
+        machine_unreleased = htb_machine_unreleased()
+
+    def get_fortresses():
+        global fortresses
+        fortresses = htb_fortresses()
+
+    def get_profiles():
+        global profile, profile_activity, profile_challenges
+        for user_id in users_ids:
+            uid = user_id['id']
+            profile[uid] = htb_profile(uid)
+            profile_activity[uid] = htb_profile_activity(uid)
+            profile_challenges[uid] = htb_profile_challenges(uid)
+
+    threads = [
+        threading.Thread(target=get_challenge_category),
+        threading.Thread(target=get_challenge_list),
+        threading.Thread(target=get_machine_list),
+        threading.Thread(target=get_machine_unreleased),
+        threading.Thread(target=get_profiles),
+        threading.Thread(target=get_fortresses)
+    ]
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
+
+    global cache_date
+    cache_date = datetime.now()
+
+#Back button
+def back_button(action):
+    menu = InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("<< Back", callback_data=action)
+        ]
+    ])
+    return menu
+
+#Check if users have completed machine or challenge
+def check_user_complete(id, type):
+    result = ''
+    for user_id in users_ids:
+        username = user_id['user']
+        profile = profile_activity[user_id['id']]
+        activity = profile.get("activity", [])
+        user = False
+        root = False
+        pwn = False
+        fortress_flags = 0
+        for item in activity:
+            if int(item.get("id")) == int(id) and item.get("object_type") == type:
+                if type == 'machine':
+                    if item.get('type') == 'user':
+                        user = True
+                    elif item.get('type') == 'root':
+                        root = True
+                elif type == 'challenge':
+                    pwn = True
+                elif type == 'fortress':
+                    fortress_flags += 1
+        if root:
+            status='<b>🔥Rooted🔥</b>'
+        elif user:
+            status='Usered'
+        elif pwn:
+            status='<b>🔥Pwned🔥</b>'
+        elif type == 'fortress':
+            status=f'{str(fortress_flags)} Flags'
+        else:
+            status='Pending'
+
+        result = result + ' \n' + username + ' Status: ' + status
+    return result
+
+#Check challenge category name by id
+def check_challenge_category_name(id_to_search):
+    for item in challenge_category:
+        if item['id'] == id_to_search:
+            return item['name']
+
+#Edit message of telegram bot
+def edit_message(context, chat_id, message_id, text, keyboard):
+    context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode='HTML')
+
+#######Telegram actions#######
+
+#Command /htb
+def start(update, context):
+    if update.message.chat_id in allowed_list:
+        response = "Choose action:"
+        context.bot.send_message(update.message.chat_id,response, reply_markup=menu_main)
+        cache()
+    else:
+        response = 'You are not authorized'
+        update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)
+
+#Command /help
 def help(update, context):
-	response = 'Make /start to start bot'
-	update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)	
+    if update.message.chat_id in allowed_list:
+        if update.message.chat_id in admin_list:
+            response = 'Make /htb to use the bot\nMake /cachedate to view the date of cache\nMake /adduser to add a user\nMake /purgeuser to purge user'
+        else:
+            response = 'Make /htb to use the bot'
+        update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)	
+    else:
+        response = 'You are not authorized'
+        update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)
+
+#Command /cachedate
+def cachedate(update, context):
+    if update.message.chat_id in admin_list:
+        update.message.reply_text(str(cache_date),parse_mode='HTML', disable_web_page_preview=True)
+    else:
+        response = 'You are not authorized'
+        update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)
+
+# Command /adduser
+def add_user(update, context):
+    if update.message.chat_id in admin_list:
+        args = context.args
+        if len(args) == 2:
+            global menu_user, users_ids
+            new_user = {'user': args[0], 'id': args[1]}
+            users_ids.append(new_user)
+            response = f"User '{args[0]}' with ID '{args[1]}' has been added."
+            menu_user=menu_user_function()
+            cache()
+        else:
+            response = "Usage: /adduser user id"
+        update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
+    else:
+        response = 'You are not authorized'
+        update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
+
+#Command /purgeuser
+def purge_user(update, context):
+    global users_ids, menu_user
+    if update.message.chat_id in admin_list:
+        args = context.args
+        if len(args) == 1:
+            user_to_remove = args[0]
+            users_ids = [user for user in users_ids if user['user'] != user_to_remove]
+            response = f"User '{user_to_remove}' has been removed."
+            menu_user=menu_user_function()
+            cache()
+        else:
+            response = "Usage: /purgeuser user"
+        update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
+    else:
+        response = 'You are not authorized'
+        update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
+
+#Command Buttons
+def handle_callback(update, context):
+    #Query
+    query = update.callback_query
+    data=query.data
+    chat_id = query.message.chat_id
+    message_id = query.message.message_id
+
+    #If allowed
+    if query.message.chat_id in allowed_list:
+
+        #Command executed
+        print(data)
+
+        #Check cachedate > 1 hour to cache data
+        if datetime.now() - cache_date > timedelta(hours=1):
+            cache()
+
+        #Actions to do
+        
+        match data:
+            #menu_main
+            case "menu_main":
+                text = "Choose action:"
+                keyboard=menu_main
+
+            #menu_active
+            case "menu_active":
+                text = menu_active()
+                keyboard=back_button('menu_main')
+
+            #menu_unreleased
+            case "menu_unreleased":
+                text = menu_unreleased()
+                keyboard=back_button('menu_main')
+  
+            #menu_machine_difficulty
+            case "menu_machine_difficulty":
+                text = "Choose machine dificulty:"
+                keyboard=menu_machine_difficulty
+
+            #menu_machines
+            case data if data.startswith('menu_machines_'):
+                selected_difficulty = data[len('menu_machines_'):]
+                text = "Choose the machine:"
+                keyboard=menu_machine(selected_difficulty)
+
+            #menu_machine_info
+            case data if data.startswith('menu_machine_info_'):
+                machine_name=data[len('menu_machine_info_'):]
+                result=menu_machine_info(machine_name)
+                text = result[0]
+                keyboard=back_button(result[1])
+
+            #menu_challenge_category
+            case "menu_challenge_category":
+                text = "Choose challenge category:"
+                keyboard=menu_challenge_category()
+
+            #menu_challenge_difficulty
+            case data if data.startswith('menu_challenge_difficulty_'):
+                id = data[len('menu_challenge_difficulty_'):]
+                text = "Choose the difficulty of challenge:"
+                keyboard=menu_challenge_difficulty(id)
+
+            #menu_challenges
+            case data if data.startswith('menu_challenges_'):
+                parts = data.split('_')
+                selected_difficulty = parts[2]
+                selected_category = int(parts[3])
+                text = "Choose the challenge:"
+                keyboard = menu_challenge(selected_category, selected_difficulty)
+            
+            #menu_challenge_info
+            case data if data.startswith('menu_challenge_info_'):
+                challenge=data[len('menu_challenge_info_'):]
+                result=menu_challenge_info(challenge)
+                text = result[0]
+                keyboard = back_button(result[1])
+
+            #menu_user
+            case 'menu_user':
+                text = "Choose the user:"
+                keyboard=menu_user
+
+            #menu_user_info
+            case data if any(user['id'] == data for user in users_ids):
+                text = menu_user_info(data)
+                keyboard=back_button('menu_user')
+            
+            #menu_fortresses
+            case 'menu_fortresses':
+                text = "Choose the fortress:"
+                keyboard=menu_fortresses()
+
+            #menu_fortresses_info
+            case data if data.startswith('menu_fortresses_info_'):
+                fortres=data[len('menu_fortresses_info_'):]
+                text=menu_fortresses_info(fortres)
+                keyboard = back_button('menu_fortresses')
 
 
+            case _:
+                text='Unexpected error'
+                keyboard = back_button('menu_main')
+        
+        edit_message(context, chat_id, message_id, text, keyboard)
+    else:
+        response = 'You are not authorized'
+        query.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)
+
+#######Start bot#######
 def main():
 	updater=Updater(TOKEN, use_context=True)
 	dp=updater.dispatcher
 
 	# Events that will trigger our bot.
 	dp.add_handler(CommandHandler('help',	help))
-	dp.add_handler(CommandHandler('start',	start))
+	dp.add_handler(CommandHandler('htb',	start))
+	dp.add_handler(CommandHandler('adduser', add_user))
+	dp.add_handler(CommandHandler('purgeuser', purge_user))
+	dp.add_handler(CommandHandler('cachedate',	cachedate))
 	dp.add_handler(CallbackQueryHandler(handle_callback))
-	dp.add_handler(MessageHandler(Filters.text,	handle_message))
 	# Start bot
 	updater.start_polling()
 	# Listening
