@@ -30,7 +30,7 @@ Before running the bot, you need to make some modifications to the script.
 Once you have configured the script, you can run the bot using the following command:
 
 ```bash
-python bot.py
+python htb_bot.py
 ```
 
 The bot will start running and listening for incoming messages and interactions.
