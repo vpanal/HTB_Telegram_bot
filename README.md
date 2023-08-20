@@ -39,6 +39,11 @@ The bot will start running and listening for incoming messages and interactions.
 
 - `/start`: Start the bot and display the main menu to choose actions.
 - `/help`: Display a help message.
+**Additional Commands:**
+
+- `/cachedate`: Displays the current date and time of the Hack The Box platform's cache from where the data is retrieved.
+- `/adduser`: Adds a new Hack The Box user to the list of users tracked by the bot.
+- `/purgeuser`: Removes a Hack The Box user from the list of users tracked by the bot.
 
 ## Main Features
 
