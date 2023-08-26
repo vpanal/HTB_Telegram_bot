@@ -288,8 +288,6 @@ menu_user=menu_user_function()
 
 #Menu user info
 def menu_user_info(uid):
-
-    # Print Release Machines
     name = profile[uid].get('name')
     rank = profile[uid].get('rank')
     points = profile[uid].get('points')
@@ -297,11 +295,13 @@ def menu_user_info(uid):
     system_owns = profile[uid].get('system_owns')
     ranking = profile[uid].get('ranking')
     challenges = profile_challenges[uid]["challenge_owns"]["solved"]
-    htbpwn= profile[uid].get('rank_ownership')
-    userdata = f"<b>{name}</b>\nID: {uid}\nRank: {rank}\nGlobal Ranking: {ranking}\nPoints: {points}\nUser Owns: {user_owns}\nSystem Owns: {system_owns}\nSolved Challenges: {challenges}\nHTB Pwned: {htbpwn}%"
+    htbpwn = profile[uid].get('rank_ownership')
+    tonextrank = profile[uid].get('current_rank_progress')
+    nextrank = profile[uid].get('next_rank')
+    userdata = f"<b>{name}</b>\nID: {uid}\nRank: {rank}\nGlobal Ranking: {ranking}\nPoints: {points}\nUser Owns: {user_owns}\nSystem Owns: {system_owns}\nSolved Challenges: {challenges}\nHTB Pwned: {htbpwn}%\nTo {nextrank}: {tonextrank}%"
     userdata= str(userdata)
     return userdata
-
+	
 #Menu fortresses
 def menu_fortresses():
     data = fortresses
