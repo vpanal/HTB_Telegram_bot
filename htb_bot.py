@@ -14,6 +14,10 @@ machine_unreleased = []
 profile = {}
 profile_activity = {}
 profile_challenges = {}
+country_users_top = {}
+users_list = []
+menu_user = ''
+season_data = {}
 cache_date=datetime(2023, 8, 1, 10, 30)
 
 #######Modify this to work#######
@@ -44,16 +48,23 @@ def htb_profile(uid):
 
 #HTB Profile challenges info
 def htb_profile_challenges(uid):
-    url = "https://www.hackthebox.com/api/v4/profile/progress/challenges/" + str(uid)
+    url = "https://www.hackthebox.com/api/v4/user/profile/progress/challenges/" + str(uid)
     result = htb_request(url)
     result = json.loads(result.text).get('profile')
     return result
 
 #HTB Profile Activity info
 def htb_profile_activity(uid):
-    url = "https://www.hackthebox.com/api/v4/profile/activity/" + str(uid)
+    url = "https://www.hackthebox.com/api/v4/user/profile/activity/" + str(uid)
     result = htb_request(url)
     result = json.loads(result.text).get('profile')
+    return result
+
+#HTB Country TOP
+def htb_country_users_top(country_code):
+    url = f"https://www.hackthebox.com/api/v4/rankings/country/{country_code}/members"
+    result = htb_request(url)
+    result = json.loads(result.text).get('data').get('rankings', [])
     return result
 
 #HTB Unreleased Machines info
@@ -91,10 +102,23 @@ def htb_fortresses():
     result = json.loads(result.text).get('data')
     return result
 
+def htb_season_list():
+    url=f"https://www.hackthebox.com/api/v4/season/list"
+    result = htb_request(url)
+    result = json.loads(result.text).get('data')
+    return result
+
+def htb_season_position(seasonid, uid):
+    url=f"https://www.hackthebox.com/api/v4/season/end/{seasonid}/{uid}"
+    result = htb_request(url)
+    result = json.loads(result.text).get('data')
+    return result
+
 #HTB Requests to API
 def htb_request(url):
     headers = {"Authorization": "Bearer " + bearer, "User-Agent": "htb_python"}
-    response = requests.request("GET", url, headers=headers, proxies=proxy, verify=False)
+    #response = requests.request("GET", url, headers=headers, proxies=proxy, verify=False)
+    response = requests.request("GET", url, headers=headers)
     return response
 
 #######Telegram Menus#######
@@ -112,6 +136,9 @@ menu_main = InlineKeyboardMarkup([
     [
         InlineKeyboardButton("Challenges", callback_data="menu_challenge_category"),
         InlineKeyboardButton("Users", callback_data="menu_user")
+    ],
+    [
+        InlineKeyboardButton("Seasons", callback_data="menu_season")
     ],
     [
         InlineKeyboardButton("Notion", url="https://vpm-pentesting.notion.site/HTB-d657ca37204f4ca5afe964e9d8e4ab76?pvs=4")
@@ -276,7 +303,7 @@ def menu_challenge_info(iname):
 #Menu user
 def menu_user_function():
     keyboard_buttons = []
-    for user_id in users_ids:
+    for user_id in users_list:
         user_name = user_id['user']
         user_callback_data = user_id['id']
         keyboard_buttons.append([InlineKeyboardButton(user_name, callback_data=user_callback_data)])
@@ -284,10 +311,11 @@ def menu_user_function():
     keyboard_buttons.append([InlineKeyboardButton("<< Back", callback_data="menu_main")])
     keyboard = InlineKeyboardMarkup(keyboard_buttons)
     return keyboard
-menu_user=menu_user_function()
 
 #Menu user info
 def menu_user_info(uid):
+
+    # Print Release Machines
     name = profile[uid].get('name')
     rank = profile[uid].get('rank')
     points = profile[uid].get('points')
@@ -298,10 +326,13 @@ def menu_user_info(uid):
     htbpwn = profile[uid].get('rank_ownership')
     tonextrank = profile[uid].get('current_rank_progress')
     nextrank = profile[uid].get('next_rank')
-    userdata = f"<b>{name}</b>\nID: {uid}\nRank: {rank}\nGlobal Ranking: {ranking}\nPoints: {points}\nUser Owns: {user_owns}\nSystem Owns: {system_owns}\nSolved Challenges: {challenges}\nHTB Pwned: {htbpwn}%\nTo {nextrank}: {tonextrank}%"
+    country_name = profile[uid].get('country_name')
+    country_code = profile[uid].get('country_code')
+    countryranking = check_country_users_top(uid, country_code)
+    userdata = f"<b>{name}</b>\nID: {uid}\nRank: {rank}\nGlobal Ranking: {ranking}\n{country_name} Ranking: {countryranking}\nPoints: {points}\nUser Owns: {user_owns}\nSystem Owns: {system_owns}\nSolved Challenges: {challenges}\nHTB Pwned: {htbpwn}%\nTo {nextrank}: {tonextrank}%"
     userdata= str(userdata)
     return userdata
-	
+
 #Menu fortresses
 def menu_fortresses():
     data = fortresses
@@ -317,7 +348,7 @@ def menu_fortresses():
 
     return keyboard
 
-#Menu fortresses
+#Menu fortresses info
 def menu_fortresses_info(id):
     data = fortresses
     name = 'eRroR'
@@ -328,6 +359,47 @@ def menu_fortresses_info(id):
             totalflags = entry['number_of_flags']
     fortresdata = f"<b>{name}</b>\nNumber of flags: {totalflags}" + check_user_complete(id, 'fortress')
     return fortresdata
+
+#Menu season
+def menu_season():
+    keyboard_buttons = []
+    for entry in seasons:
+        sid = entry['id']
+        callback = f'menu_season_info_{sid}'
+        name = entry['name']
+        keyboard_buttons.append([InlineKeyboardButton(name, callback_data=callback)])
+    keyboard_buttons.append([InlineKeyboardButton("<< Back", callback_data="menu_main")])
+    keyboard = InlineKeyboardMarkup(keyboard_buttons)
+    return keyboard
+
+#Menu season info
+def menu_season_info(sid):
+    for item in seasons:
+        if str(item["id"]) == str(sid):
+            name = item["name"]
+            break
+    data = f'<b>{name}</b>\n'
+    for entry_key, entry_list in season_data.items():
+        if str(entry_key).startswith(str(sid)):
+            if entry_list:
+                tier = entry_list.get('season').get('tier')
+                if tier == 'Holo':
+                    tier='🔥Holo🔥'
+                ranking = entry_list.get("rank").get("current")
+                user = entry_list.get("user").get("name")
+                total_flags = entry_list.get("owns").get("total_flags")
+                user_flags = entry_list.get("owns").get("user").get("flags_pawned")
+                root_flags = entry_list.get("owns").get("root").get("flags_pawned")
+                total_flags=total_flags*2
+                pawned_flags=root_flags+user_flags
+                userdata=f'{ranking} - {user} - {tier} - {pawned_flags}/{total_flags} Flags\n'
+                data += userdata
+    return data
+
+
+
+
+
 
 #######Other functions#######
 
@@ -353,13 +425,29 @@ def cache():
         global fortresses
         fortresses = htb_fortresses()
 
+    def get_seasons():
+        global seasons, season_data
+        seasons = htb_season_list()
+        for season in seasons:
+            sid = season['id']
+            for uid in users_ids:
+                seasonfinalid = f"{sid}{uid}"
+                season_data[seasonfinalid] = htb_season_position(sid, uid)
+
     def get_profiles():
-        global profile, profile_activity, profile_challenges
-        for user_id in users_ids:
-            uid = user_id['id']
+        global profile, profile_activity, profile_challenges, users_list, menu_user, country_users_top
+        users_list = []
+        profile_challenges
+        for uid in users_ids:
             profile[uid] = htb_profile(uid)
             profile_activity[uid] = htb_profile_activity(uid)
             profile_challenges[uid] = htb_profile_challenges(uid)
+            country_code = profile[uid].get('country_code')
+            if country_code not in  profile_challenges.keys():
+                country_users_top[country_code] = htb_country_users_top(country_code)
+            new_user = {'user': str(profile[uid].get('name')), 'id': uid}
+            users_list.append(new_user)
+            menu_user=menu_user_function()
 
     threads = [
         threading.Thread(target=get_challenge_category),
@@ -367,7 +455,8 @@ def cache():
         threading.Thread(target=get_machine_list),
         threading.Thread(target=get_machine_unreleased),
         threading.Thread(target=get_profiles),
-        threading.Thread(target=get_fortresses)
+        threading.Thread(target=get_fortresses),
+        threading.Thread(target=get_seasons)
     ]
 
     for thread in threads:
@@ -391,7 +480,7 @@ def back_button(action):
 #Check if users have completed machine or challenge
 def check_user_complete(id, type):
     result = ''
-    for user_id in users_ids:
+    for user_id in users_list:
         username = user_id['user']
         profile = profile_activity[user_id['id']]
         activity = profile.get("activity", [])
@@ -430,6 +519,12 @@ def check_challenge_category_name(id_to_search):
         if item['id'] == id_to_search:
             return item['name']
 
+def check_country_users_top(id_to_search, country_code):
+    for item in country_users_top[country_code]:
+            if str(item["id"]) == str(id_to_search):
+                countryrank = str(item["rank"])
+                return countryrank
+            
 #Edit message of telegram bot
 def edit_message(context, chat_id, message_id, text, keyboard):
     context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode='HTML')
@@ -470,15 +565,14 @@ def cachedate(update, context):
 def add_user(update, context):
     if update.message.chat_id in admin_list:
         args = context.args
-        if len(args) == 2:
-            global menu_user, users_ids
-            new_user = {'user': args[0], 'id': args[1]}
+        if len(args) == 1:
+            global users_ids
+            new_user = args[0]
             users_ids.append(new_user)
-            response = f"User '{args[0]}' with ID '{args[1]}' has been added."
-            menu_user=menu_user_function()
+            response = f"User with ID '{args[0]}' has been added."
             cache()
         else:
-            response = "Usage: /adduser user id"
+            response = "Usage: /adduser id"
         update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
     else:
         response = 'You are not authorized'
@@ -490,13 +584,15 @@ def purge_user(update, context):
     if update.message.chat_id in admin_list:
         args = context.args
         if len(args) == 1:
-            user_to_remove = args[0]
-            users_ids = [user for user in users_ids if user['user'] != user_to_remove]
-            response = f"User '{user_to_remove}' has been removed."
-            menu_user=menu_user_function()
-            cache()
+            id_to_remove = args[0]
+            if id_to_remove in users_ids:
+                users_ids.remove(id_to_remove)
+                cache()
+                response = f"User with ID '{id_to_remove}' has been purged."
+            else:
+                response = "User id dont exist."
         else:
-            response = "Usage: /purgeuser user"
+            response = "Usage: /purgeuser id"
         update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
     else:
         response = 'You are not authorized'
@@ -588,7 +684,7 @@ def handle_callback(update, context):
                 keyboard=menu_user
 
             #menu_user_info
-            case data if any(user['id'] == data for user in users_ids):
+            case data if any(user['id'] == data for user in users_list):
                 text = menu_user_info(data)
                 keyboard=back_button('menu_user')
             
@@ -602,7 +698,17 @@ def handle_callback(update, context):
                 fortres=data[len('menu_fortresses_info_'):]
                 text=menu_fortresses_info(fortres)
                 keyboard = back_button('menu_fortresses')
-
+            
+            #menu_season
+            case 'menu_season':
+                text = "Choose the season:"
+                keyboard=menu_season()
+                            
+            #menu_season
+            case data if data.startswith('menu_season_info_'):
+                sid=data[len('menu_season_info_'):]
+                text=menu_season_info(sid)
+                keyboard = back_button('menu_season')
 
             case _:
                 text='Unexpected error'
