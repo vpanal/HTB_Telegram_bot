@@ -428,6 +428,7 @@ def cache():
     def get_seasons():
         global seasons, season_data
         seasons = htb_season_list()
+	season_data = {}
         for season in seasons:
             sid = season['id']
             for uid in users_ids:
