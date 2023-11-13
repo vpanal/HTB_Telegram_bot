@@ -76,9 +76,9 @@ def htb_machine_unreleased():
 
 #HTB Active Machines info
 def htb_machine_list():
-    url="https://www.hackthebox.com/api/v4/machine/list"
+    url="https://www.hackthebox.com/api/v4/machine/paginated"
     result = htb_request(url)
-    result = json.loads(result.text).get('info')
+    result = json.loads(result.text).get('data')
     return result
 
 #HTB Active Challenges info
@@ -157,13 +157,12 @@ def menu_active():
     name = latest_machine['name']
     operating_system = latest_machine['os']
     difficulty = latest_machine['difficultyText']
-    ip = latest_machine['ip']
     id = latest_machine['id']
     users = latest_machine['user_owns_count']
     roots = latest_machine['root_owns_count']
 
     # Mostrar los detalles de la máquina
-    result = "<b>" + str(name) + "</b>\nOS: " + str(operating_system) + "\nDifficulty: " + str(difficulty) + "\nIP: " + str(ip) + "\nUsers: " + str(users) + "\nRoot: " + str(roots) + check_user_complete(id, 'machine')
+    result = "<b>" + str(name) + "</b>\nOS: " + str(operating_system) + "\nDifficulty: " + str(difficulty) + "\nUsers: " + str(users) + "\nRoot: " + str(roots) + check_user_complete(id, 'machine')
     return result
 
 #menu unreleased machine
@@ -219,11 +218,10 @@ def menu_machine_info(iname):
         name = entry['name']
         operating_system = entry['os']
         difficulty = entry['difficultyText']
-        ip = entry['ip']
         users = entry['user_owns_count']
         roots = entry['root_owns_count']
         if name == iname:
-            results="<b>" + str(name) + "</b>\nOS: " + str(operating_system) + "\nDifficulty: " + str(difficulty) + "\nIP: " + str(ip) + "\nDate: " + str(date) + "\nUser Number: " + str(users) + "\nRoot Number: " + str(roots) + check_user_complete(id, 'machine')
+            results="<b>" + str(name) + "</b>\nOS: " + str(operating_system) + "\nDifficulty: " + str(difficulty) + "\nDate: " + str(date) + "\nUser Number: " + str(users) + "\nRoot Number: " + str(roots) + check_user_complete(id, 'machine')
             result = [
                 results,
                 str('menu_machines_'+difficulty)
