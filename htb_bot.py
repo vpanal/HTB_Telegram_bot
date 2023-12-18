@@ -41,75 +41,75 @@ proxy = {
 
 #HTB Profile basic info
 def htb_profile(uid):
-    url = "https://www.hackthebox.com/api/v4/user/profile/basic/" + str(uid)
+    url = "https://labs.hackthebox.com/api/v4/user/profile/basic/" + str(uid)
     result = htb_request(url)
     result = json.loads(result.text).get('profile')
     return result
 
 #HTB Profile challenges info
 def htb_profile_challenges(uid):
-    url = "https://www.hackthebox.com/api/v4/user/profile/progress/challenges/" + str(uid)
+    url = "https://labs.hackthebox.com/api/v4/user/profile/progress/challenges/" + str(uid)
     result = htb_request(url)
     result = json.loads(result.text).get('profile')
     return result
 
 #HTB Profile Activity info
 def htb_profile_activity(uid):
-    url = "https://www.hackthebox.com/api/v4/user/profile/activity/" + str(uid)
+    url = "https://labs.hackthebox.com/api/v4/user/profile/activity/" + str(uid)
     result = htb_request(url)
     result = json.loads(result.text).get('profile')
     return result
 
 #HTB Country TOP
 def htb_country_users_top(country_code):
-    url = f"https://www.hackthebox.com/api/v4/rankings/country/{country_code}/members"
+    url = f"https://labs.hackthebox.com/api/v4/rankings/country/{country_code}/members"
     result = htb_request(url)
     result = json.loads(result.text).get('data').get('rankings', [])
     return result
 
 #HTB Unreleased Machines info
 def htb_machine_unreleased():
-    url = "https://www.hackthebox.com/api/v4/machine/unreleased"
+    url = "https://labs.hackthebox.com/api/v4/machine/unreleased"
     result = htb_request(url)
     result = json.loads(result.text).get('data')
     return result
 
 #HTB Active Machines info
 def htb_machine_list():
-    url="https://www.hackthebox.com/api/v4/machine/paginated"
+    url="https://labs.hackthebox.com/api/v4/machine/paginated"
     result = htb_request(url)
     result = json.loads(result.text).get('data')
     return result
 
 #HTB Active Challenges info
 def htb_challenge_list():
-    url="https://www.hackthebox.com/api/v4/challenge/list"
+    url="https://labs.hackthebox.com/api/v4/challenge/list"
     result = htb_request(url)
     result = json.loads(result.text).get('challenges')
     return result
 
 #HTB Challenge Categories
 def htb_challenge_categories_list():
-    url="https://www.hackthebox.com/api/v4/challenge/categories/list"
+    url="https://labs.hackthebox.com/api/v4/challenge/categories/list"
     result = htb_request(url)
     result = json.loads(result.text).get('info')
     return result
 
 #HTB Fortresses
 def htb_fortresses():
-    url="https://www.hackthebox.com/api/v4/fortresses"
+    url="https://labs.hackthebox.com/api/v4/fortresses"
     result = htb_request(url)
     result = json.loads(result.text).get('data')
     return result
 
 def htb_season_list():
-    url=f"https://www.hackthebox.com/api/v4/season/list"
+    url=f"https://labs.hackthebox.com/api/v4/season/list"
     result = htb_request(url)
     result = json.loads(result.text).get('data')
     return result
 
 def htb_season_position(seasonid, uid):
-    url=f"https://www.hackthebox.com/api/v4/season/end/{seasonid}/{uid}"
+    url=f"https://labs.hackthebox.com/api/v4/season/end/{seasonid}/{uid}"
     result = htb_request(url)
     result = json.loads(result.text).get('data')
     return result
