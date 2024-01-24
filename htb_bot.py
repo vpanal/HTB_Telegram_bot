@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timedelta
 import threading
 
+
 # Inicialización de variables de entorno
 challenge_category = []
 challenge_list = []
@@ -18,23 +19,26 @@ country_users_top = {}
 users_list = []
 menu_user = ''
 season_data = {}
+season_machines_number = []
 cache_date=datetime(2023, 8, 1, 10, 30)
 
-#######Modify this to work#######
+#######Modifica esto para que funcione#######
 
 #IDs de chat de telegram permitidas
-allowed_list=(idchat, idchat)
+allowed_list=(idchat, idchat) 
 #IDs de chat de telegram permitidas
-admin_list=(idchat, idchat)
+admin_list=(idchat, idchat) 
 #Token de bot de telegram
-TOKEN='Token de bot de telegram'
+TOKEN='Telegram bot token'
 #Usernames y ID de usuarios de HTB
-users_ids = [{'user': 'username', 'id': 'idnumer'}, {'user': 'username', 'id': 'idnumer'}]
-
+users_ids = ['idnumer', 'idnumer', 'idnumer']
 #Bearer Token de HTB
 bearer='BearerToken'
+#Enlace Wiki
+enlace_wiki="Wiki_url"
 
 proxy = {
+    "https": "http://127.0.0.1:8080"
 }
 
 #######HTB API#######
@@ -76,7 +80,8 @@ def htb_machine_unreleased():
 
 #HTB Active Machines info
 def htb_machine_list():
-    url="https://labs.hackthebox.com/api/v4/machine/paginated"
+    #url="https://labs.hackthebox.com/api/v4/machine/list"
+    url="https://labs.hackthebox.com/api/v4/machine/paginated?per_page=100"
     result = htb_request(url)
     result = json.loads(result.text).get('data')
     return result
@@ -114,6 +119,12 @@ def htb_season_position(seasonid, uid):
     result = json.loads(result.text).get('data')
     return result
 
+def htb_season_machines_number(seasonid):
+    url=f"https://labs.hackthebox.com/api/v4/season/machines/completed/{seasonid}"
+    result = htb_request(url)
+    result = json.loads(result.text).get('data').get('season_flags')
+    return result
+
 #HTB Requests to API
 def htb_request(url):
     headers = {"Authorization": "Bearer " + bearer, "User-Agent": "htb_python"}
@@ -141,7 +152,7 @@ menu_main = InlineKeyboardMarkup([
         InlineKeyboardButton("Seasons", callback_data="menu_season")
     ],
     [
-        InlineKeyboardButton("Notion", url="https://vpm-pentesting.notion.site/HTB-d657ca37204f4ca5afe964e9d8e4ab76?pvs=4")
+        InlineKeyboardButton("Notion", url=enlace_wiki)
     ]
 ])
 
@@ -200,7 +211,6 @@ def menu_machine(idifficulty):
     for entry in machine_list:
         name = entry['name']
         difficulty = entry['difficultyText']
-        
         if difficulty == idifficulty:
             names += name + '\n'
             keyboard_buttons.append(InlineKeyboardButton(name, callback_data=f"menu_machine_info_{name}"))
@@ -377,6 +387,7 @@ def menu_season_info(sid):
             name = item["name"]
             break
     data = f'<b>{name}</b>\n'
+    total_flags=season_machines_number[int(sid)-1]
     for entry_key, entry_list in season_data.items():
         if str(entry_key).startswith(str(sid)):
             if entry_list:
@@ -385,10 +396,8 @@ def menu_season_info(sid):
                     tier='🔥Holo🔥'
                 ranking = entry_list.get("rank").get("current")
                 user = entry_list.get("user").get("name")
-                total_flags = entry_list.get("owns").get("total_flags")
                 user_flags = entry_list.get("owns").get("user").get("flags_pawned")
                 root_flags = entry_list.get("owns").get("root").get("flags_pawned")
-                total_flags=total_flags*2
                 pawned_flags=root_flags+user_flags
                 userdata=f'{ranking} - {user} - {tier} - {pawned_flags}/{total_flags} Flags\n'
                 data += userdata
@@ -424,11 +433,13 @@ def cache():
         fortresses = htb_fortresses()
 
     def get_seasons():
-        global seasons, season_data
+        global seasons, season_data, season_machines_number
         seasons = htb_season_list()
         season_data = {}
+        season_machines_number = [None] * len(seasons)
         for season in seasons:
             sid = season['id']
+            season_machines_number[sid-1]=htb_season_machines_number(sid)
             for uid in users_ids:
                 seasonfinalid = f"{sid}{uid}"
                 season_data[seasonfinalid] = htb_season_position(sid, uid)
