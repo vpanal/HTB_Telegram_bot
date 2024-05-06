@@ -5,7 +5,31 @@ import requests
 import json
 from datetime import datetime, timedelta
 import threading
+import warnings
 
+try:
+    # Importar configuracion de archivo config.py
+    from config import allowed_list, admin_list, TOKEN, users_ids, bearer, enlace_wiki, proxyenabled, proxy
+except:
+    #######Modifica esto para que funcione#######
+
+    #IDs de chat de telegram permitidas
+    allowed_list=(idchat, idchat) 
+    #IDs de chat de telegram permitidas
+    admin_list=(idchat, idchat)
+    #Token de bot de telegram
+    TOKEN='Telegram bot token'
+    #Usernames y ID de usuarios de HTB
+    users_ids = ['idnumer', 'idnumer', 'idnumer']
+    #Bearer Token de HTB
+    bearer='BearerToken'
+    #Enlace Wiki
+    enlace_wiki="Wiki_url"
+    #Configuracion del proxy
+    proxyenabled=False
+    proxy = {
+        "https": "http://127.0.0.1:8080"
+    }
 
 # Inicialización de variables de entorno
 challenge_category = []
@@ -22,24 +46,9 @@ season_data = {}
 season_machines_number = []
 cache_date=datetime(2023, 8, 1, 10, 30)
 
-#######Modifica esto para que funcione#######
-
-#IDs de chat de telegram permitidas
-allowed_list=(idchat, idchat) 
-#IDs de chat de telegram permitidas
-admin_list=(idchat, idchat) 
-#Token de bot de telegram
-TOKEN='Telegram bot token'
-#Usernames y ID de usuarios de HTB
-users_ids = ['idnumer', 'idnumer', 'idnumer']
-#Bearer Token de HTB
-bearer='BearerToken'
-#Enlace Wiki
-enlace_wiki="Wiki_url"
-
-proxy = {
-    "https": "http://127.0.0.1:8080"
-}
+# Proxy disable warnings
+if proxyenabled ==True:
+    warnings.filterwarnings("ignore", message="Unverified HTTPS request")
 
 #######HTB API#######
 
@@ -114,9 +123,12 @@ def htb_season_list():
     return result
 
 def htb_season_position(seasonid, uid):
-    url=f"https://labs.hackthebox.com/api/v4/season/end/{seasonid}/{uid}"
-    result = htb_request(url)
-    result = json.loads(result.text).get('data')
+    try:
+        url=f"https://labs.hackthebox.com/api/v4/season/end/{seasonid}/{uid}"
+        result = htb_request(url)
+        result = json.loads(result.text).get('data')
+    except json.JSONDecodeError:
+        result = None
     return result
 
 def htb_season_machines_number(seasonid):
@@ -128,8 +140,10 @@ def htb_season_machines_number(seasonid):
 #HTB Requests to API
 def htb_request(url):
     headers = {"Authorization": "Bearer " + bearer, "User-Agent": "htb_python"}
-    #response = requests.request("GET", url, headers=headers, proxies=proxy, verify=False)
-    response = requests.request("GET", url, headers=headers)
+    if proxyenabled == True:
+        response = requests.request("GET", url, headers=headers, proxies=proxy, verify=False)
+    else:
+        response = requests.request("GET", url, headers=headers)
     return response
 
 #######Telegram Menus#######
@@ -555,7 +569,7 @@ def start(update, context):
 def help(update, context):
     if update.message.chat_id in allowed_list:
         if update.message.chat_id in admin_list:
-            response = 'Make /htb to use the bot\nMake /cachedate to view the date of cache\nMake /adduser to add a user\nMake /purgeuser to purge user'
+            response = 'Make /htb to use the bot\nMake /cachedate to view the date of cache\nMake /adduser to add users\nMake /purgeuser to purge users'
         else:
             response = 'Make /htb to use the bot'
         update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)	
@@ -578,11 +592,17 @@ def add_user(update, context):
         if len(args) == 1:
             global users_ids
             new_user = args[0]
-            users_ids.append(new_user)
-            response = f"User with ID '{args[0]}' has been added."
+            if ',' in new_user:
+                split_users = new_user.split(',')
+                for user_id in split_users:
+                    users_ids.append(user_id.strip())  # Eliminar espacios en blanco alrededor del ID
+                response = f"Users with IDs '{new_user}' has been added."
+            else:
+                users_ids.append(new_user)
+                response = f"User with ID '{args[0]}' has been added."
             cache()
         else:
-            response = "Usage: /adduser id"
+            response = "Usage: /adduser id,id"
         update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
     else:
         response = 'You are not authorized'
@@ -595,18 +615,28 @@ def purge_user(update, context):
         args = context.args
         if len(args) == 1:
             id_to_remove = args[0]
-            if id_to_remove in users_ids:
-                users_ids.remove(id_to_remove)
-                cache()
-                response = f"User with ID '{id_to_remove}' has been purged."
+            if ',' in id_to_remove:
+                # Si hay comas en el argumento, dividirlo en varios IDs
+                split_ids = id_to_remove.split(',')
+                for id_remove in split_ids:
+                    if id_remove.strip() in users_ids:
+                        users_ids.remove(id_remove.strip())
+                        cache()
+                response = f"Users with IDs '{id_to_remove}' have been purged."
             else:
-                response = "User id dont exist."
+                if id_to_remove in users_ids:
+                    users_ids.remove(id_to_remove)
+                    cache()
+                    response = f"User with ID '{id_to_remove}' has been purged."
+                else:
+                    response = "User ID doesn't exist."
         else:
-            response = "Usage: /purgeuser id"
+            response = "Usage: /purgeuser id,id"
         update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
     else:
         response = 'You are not authorized'
         update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
+
 
 #Command Buttons
 def handle_callback(update, context):
