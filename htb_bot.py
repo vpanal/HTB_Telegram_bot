@@ -43,7 +43,7 @@ country_users_top = {}
 users_list = []
 menu_user = ''
 season_data = {}
-season_machines_number = []
+season_machines_number = {}
 cache_date=datetime(2023, 8, 1, 10, 30)
 
 # Proxy disable warnings
@@ -401,7 +401,7 @@ def menu_season_info(sid):
             name = item["name"]
             break
     data = f'<b>{name}</b>\n'
-    total_flags=season_machines_number[int(sid)-1]
+    total_flags = season_machines_number.get(int(sid), 0)
     for entry_key, entry_list in season_data.items():
         if str(entry_key).startswith(str(sid)):
             if entry_list:
@@ -416,8 +416,6 @@ def menu_season_info(sid):
                 userdata=f'{ranking} - {user} - {tier} - {pawned_flags}/{total_flags} Flags\n'
                 data += userdata
     return data
-
-
 
 
 
@@ -450,10 +448,10 @@ def cache():
         global seasons, season_data, season_machines_number
         seasons = htb_season_list()
         season_data = {}
-        season_machines_number = [None] * len(seasons)
+        season_machines_number = {}
         for season in seasons:
             sid = season['id']
-            season_machines_number[sid-1]=htb_season_machines_number(sid)
+            season_machines_number[sid] = htb_season_machines_number(sid)
             for uid in users_ids:
                 seasonfinalid = f"{sid}{uid}"
                 season_data[seasonfinalid] = htb_season_position(sid, uid)
