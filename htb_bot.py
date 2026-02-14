@@ -45,6 +45,7 @@ menu_user = ''
 season_data = {}
 season_machines_number = {}
 cache_date=datetime(2023, 8, 1, 10, 30)
+menu_season_items_per_page = 3
 
 # Proxy disable warnings
 if proxyenabled ==True:
@@ -362,7 +363,7 @@ def menu_fortresses():
 
     for fortress_id, entry in data.items():
         name = entry['name']
-        callback_data = f"menu_fortresses_info_{entry['id']}"  # Incluyendo el ID en callback_data
+        callback_data = f"menu_fortresses_info_{entry['id']}"
         keyboard_buttons.append(InlineKeyboardButton(name, callback_data=callback_data))
 
     keyboard_buttons.append(InlineKeyboardButton("<< Back", callback_data="menu_main"))
@@ -382,15 +383,52 @@ def menu_fortresses_info(id):
     fortresdata = f"<b>{name}</b>\nNumber of flags: {totalflags}" + check_user_complete(id, 'fortress')
     return fortresdata
 
-#Menu season
-def menu_season():
+#Menu season with pagination
+def menu_season(page=0):
+    total_seasons = len(seasons)
+    total_pages = (total_seasons + menu_season_items_per_page - 1) // menu_season_items_per_page
+    
+    # Validar página
+    if page < 0:
+        page = 0
+    if page >= total_pages:
+        page = total_pages - 1
+    
+    # Calcular índices
+    start_idx = page * menu_season_items_per_page
+    end_idx = start_idx + menu_season_items_per_page
+    
+    # Obtener temporadas para esta página
+    page_seasons = seasons[start_idx:end_idx]
+    
     keyboard_buttons = []
-    for entry in seasons:
+    
+    # Añadir botones de temporadas
+    for entry in page_seasons:
         sid = entry['id']
         callback = f'menu_season_info_{sid}'
         name = entry['name']
         keyboard_buttons.append([InlineKeyboardButton(name, callback_data=callback)])
+    
+    # Añadir botones de navegación (siempre 2, vacíos si no aplica)
+    if total_pages > 1:
+        nav_buttons = []
+        
+        if page > 0:
+            nav_buttons.append(InlineKeyboardButton("◀ Previous", callback_data=f"menu_season_page_{page - 1}"))
+        else:
+            nav_buttons.append(InlineKeyboardButton(" ", callback_data="menu_season_page_0"))
+        
+        if page < total_pages - 1:
+            nav_buttons.append(InlineKeyboardButton("Next ▶", callback_data=f"menu_season_page_{page + 1}"))
+        else:
+            nav_buttons.append(InlineKeyboardButton(" ", callback_data=f"menu_season_page_{page}"))
+        
+        keyboard_buttons.append(nav_buttons)
+    
+    # Botón de atrás
     keyboard_buttons.append([InlineKeyboardButton("<< Back", callback_data="menu_main")])
+    
     keyboard = InlineKeyboardMarkup(keyboard_buttons)
     return keyboard
 
@@ -416,9 +454,6 @@ def menu_season_info(sid):
                 userdata=f'{ranking} - {user} - {tier} - {pawned_flags}/{total_flags} Flags\n'
                 data += userdata
     return data
-
-
-
 
 #######Other functions#######
 
@@ -593,7 +628,7 @@ def add_user(update, context):
             if ',' in new_user:
                 split_users = new_user.split(',')
                 for user_id in split_users:
-                    users_ids.append(user_id.strip())  # Eliminar espacios en blanco alrededor del ID
+                    users_ids.append(user_id.strip())
                 response = f"Users with IDs '{new_user}' has been added."
             else:
                 users_ids.append(new_user)
@@ -614,7 +649,6 @@ def purge_user(update, context):
         if len(args) == 1:
             id_to_remove = args[0]
             if ',' in id_to_remove:
-                # Si hay comas en el argumento, dividirlo en varios IDs
                 split_ids = id_to_remove.split(',')
                 for id_remove in split_ids:
                     if id_remove.strip() in users_ids:
@@ -739,10 +773,25 @@ def handle_callback(update, context):
             
             #menu_season
             case 'menu_season':
-                text = "Choose the season:"
-                keyboard=menu_season()
+                total_seasons = len(seasons)
+                total_pages = (total_seasons + menu_season_items_per_page - 1) // menu_season_items_per_page
+                text = f"Choose the season (Page 1/{total_pages}):"
+                keyboard=menu_season(0)
+            
+            #menu_season_page pagination
+            case data if data.startswith('menu_season_page_'):
+                page = int(data[len('menu_season_page_'):])
+                total_seasons = len(seasons)
+                total_pages = (total_seasons + menu_season_items_per_page - 1) // menu_season_items_per_page
+                # Validar página
+                if page >= total_pages:
+                    page = total_pages - 1
+                if page < 0:
+                    page = 0
+                text = f"Choose the season (Page {page + 1}/{total_pages}):"
+                keyboard=menu_season(page)
                             
-            #menu_season
+            #menu_season_info
             case data if data.startswith('menu_season_info_'):
                 sid=data[len('menu_season_info_'):]
                 text=menu_season_info(sid)
