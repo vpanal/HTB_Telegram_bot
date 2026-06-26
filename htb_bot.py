@@ -67,12 +67,43 @@ def htb_profile_challenges(uid):
     result = json.loads(result.text).get('profile')
     return result
 
-#HTB Profile Activity info
+#HTB Profile Activity info (with pagination support)
 def htb_profile_activity(uid):
-    url = "https://labs.hackthebox.com/api/v4/user/profile/activity/" + str(uid)
-    result = htb_request(url)
-    result = json.loads(result.text).get('profile')
-    return result
+    all_activities = []
+    page = 1
+    last_page = None
+    
+    while True:
+        url = f"https://labs.hackthebox.com/api/v5/user/profile/activity/{uid}?page={page}&per_page=100"
+        result = htb_request(url)
+        try:
+            data = json.loads(result.text)
+            activities = data.get('data', [])
+            if not activities:
+                break
+            all_activities.extend(activities)
+            # Check if we have reached the last page
+            meta = data.get('meta', {})
+            if 'lastPage' in meta:
+                last_page = meta['lastPage']
+                if page >= last_page:
+                    break
+            elif 'totalItems' in meta:
+                # Calculate total pages based on items per page
+                items_per_page = len(activities)
+                if items_per_page > 0:
+                    total_pages = (meta['totalItems'] + items_per_page - 1) // items_per_page
+                    if page >= total_pages:
+                        break
+            page += 1
+        except (json.JSONDecodeError, KeyError):
+            # If we can't parse the response or find meta data, try the next page anyway
+            # but break after a reasonable number of attempts to avoid infinite loops
+            if page > 20:  # Safety limit
+                break
+            page += 1
+    
+    return all_activities
 
 #HTB Country TOP
 def htb_country_users_top(country_code):
@@ -83,7 +114,7 @@ def htb_country_users_top(country_code):
 
 #HTB Unreleased Machines info
 def htb_machine_unreleased():
-    url = "https://labs.hackthebox.com/api/v4/machine/unreleased"
+    url = "https://labs.hackthebox.com/api/v5/machines?state=unreleased"
     result = htb_request(url)
     result = json.loads(result.text).get('data')
     return result
@@ -133,10 +164,11 @@ def htb_season_position(seasonid, uid):
     return result
 
 def htb_season_machines_number(seasonid):
-    url=f"https://labs.hackthebox.com/api/v4/season/machines/completed/{seasonid}"
+    url = f"https://labs.hackthebox.com/api/v4/season/machines/{seasonid}"
     result = htb_request(url)
-    result = json.loads(result.text).get('data').get('season_flags')
-    return result
+    data = json.loads(result.text).get('data', [])
+    count = len(data)
+    return count * 2
 
 #HTB Requests to API
 def htb_request(url):
@@ -195,11 +227,11 @@ def menu_active():
 def menu_unreleased():
     result=''
     for entry in machine_unreleased:
-        date = entry['release'].split('T')[0]
+        date = entry['releaseDate'].split('T')[0]
         date = datetime.strptime(date, "%Y-%m-%d").strftime("%d-%m-%Y")
         name = entry['name']
         operating_system = entry['os']
-        difficulty = entry['difficulty_text']
+        difficulty = entry['difficultyText']
         result= result +"<b>" + str(date) + "</b>\nName: " + str(name) + "\nOS: " + str(operating_system) + "\nDifficulty: <b>" + str(difficulty) + "</b>\n\n"
     return result
 
@@ -358,10 +390,11 @@ def menu_user_info(uid):
 
 #Menu fortresses
 def menu_fortresses():
-    data = fortresses
+    # Assuming fortresses is the list from your API response
+    data = fortresses  # This should be the list from response['data']
     keyboard_buttons = []
 
-    for fortress_id, entry in data.items():
+    for entry in data:
         name = entry['name']
         callback_data = f"menu_fortresses_info_{entry['id']}"
         keyboard_buttons.append(InlineKeyboardButton(name, callback_data=callback_data))
@@ -373,13 +406,14 @@ def menu_fortresses():
 
 #Menu fortresses info
 def menu_fortresses_info(id):
-    data = fortresses
+    data = fortresses  # This should be the list from your API response
     name = 'eRroR'
     totalflags = 'error'
-    for fortress_id, entry in data.items():
+    for entry in data:
         if int(entry['id']) == int(id):
             name = entry['name']
             totalflags = entry['number_of_flags']
+            break
     fortresdata = f"<b>{name}</b>\nNumber of flags: {totalflags}" + check_user_complete(id, 'fortress')
     return fortresdata
 
@@ -440,19 +474,25 @@ def menu_season_info(sid):
             break
     data = f'<b>{name}</b>\n'
     total_flags = season_machines_number.get(int(sid), 0)
-    for entry_key, entry_list in season_data.items():
-        if str(entry_key).startswith(str(sid)):
-            if entry_list:
-                tier = entry_list.get('season').get('tier')
-                if tier == 'Holo':
-                    tier='🔥Holo🔥'
-                ranking = entry_list.get("rank").get("current")
-                user = entry_list.get("user").get("name")
-                user_flags = entry_list.get("owns").get("user").get("flags_pawned")
-                root_flags = entry_list.get("owns").get("root").get("flags_pawned")
-                pawned_flags=root_flags+user_flags
-                userdata=f'{ranking} - {user} - {tier} - {pawned_flags}/{total_flags} Flags\n'
-                data += userdata
+    
+    # Recorrer cada usuario en users_ids
+    for uid in users_ids:
+        # Construir la clave compuesta
+        key = f"{sid}{uid}"
+        entry_list = season_data.get(key)
+        
+        if entry_list:
+            tier = entry_list.get('season').get('tier')
+            if tier == 'Holo':
+                tier='🔥Holo🔥'
+            ranking = entry_list.get("rank").get("current")
+            user = entry_list.get("user").get("name")
+            user_flags = entry_list.get("owns").get("user").get("flags_pawned")
+            root_flags = entry_list.get("owns").get("root").get("flags_pawned")
+            pawned_flags = root_flags + user_flags
+            userdata = f'{ranking} - {user} - {tier} - {pawned_flags}/{total_flags} Flags\n'
+            data += userdata
+    
     return data
 
 #######Other functions#######
@@ -539,35 +579,60 @@ def check_user_complete(id, type):
     result = ''
     for user_id in users_list:
         username = user_id['user']
-        profile = profile_activity[user_id['id']]
-        activity = profile.get("activity", [])
+        
+        activity_list = profile_activity.get(user_id['id'], [])
+        if not isinstance(activity_list, list):
+            activity_list = []
+            
         user = False
         root = False
         pwn = False
         fortress_flags = 0
-        for item in activity:
-            if int(item.get("id")) == int(id) and item.get("object_type") == type:
+        total_flags = 0  # Para saber cuántas flags tiene la fortaleza
+        
+        # Obtener el total de flags de la fortaleza
+        if type == 'fortress':
+            for fortress in fortresses:  # Asumiendo que fortresses es tu lista de fortalezas
+                if int(fortress['id']) == int(id):
+                    total_flags = fortress['number_of_flags']
+                    break
+        
+        for item in activity_list:
+            if isinstance(item, dict):
+                item_id = item.get("id")
+                item_type = item.get("type")
+                fortress_id = item.get("fortressId")  # Importante: campo correcto para fortalezas
+                
+                # Para máquinas
                 if type == 'machine':
-                    if item.get('type') == 'user':
-                        user = True
-                    elif item.get('type') == 'root':
-                        root = True
-                elif type == 'challenge':
-                    pwn = True
-                elif type == 'fortress':
-                    fortress_flags += 1
+                    if item_id is not None and str(item_id) == str(id):
+                        if item_type == 'user':
+                            user = True
+                        elif item_type == 'root':
+                            root = True
+                # Para challenges
+                elif type == 'challenge' and item_type == 'challenge':
+                    if item_id is not None and str(item_id) == str(id):
+                        pwn = True
+                # Para fortresses - usar fortressId, no id
+                elif type == 'fortress' and item_type == 'fortress':
+                    if fortress_id is not None and str(fortress_id) == str(id):
+                        fortress_flags += 1
+                        
+        # Determinar el estado
         if root:
-            status='<b>🔥Rooted🔥</b>'
+            status = '<b>🔥Rooted🔥</b>'
         elif user:
-            status='Usered'
+            status = 'Usered'
         elif pwn:
-            status='<b>🔥Pwned🔥</b>'
+            status = '<b>🔥Pwned🔥</b>'
         elif type == 'fortress':
-            status=f'{str(fortress_flags)} Flags'
+            status = f'{str(fortress_flags)}/{total_flags} Flags'  # Mostrar progreso
         else:
-            status='Pending'
+            status = 'Pending'
 
         result = result + ' \n' + username + ' Status: ' + status
+    
     return result
 
 #Check challenge category name by id
