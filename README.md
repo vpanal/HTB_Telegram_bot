@@ -4,7 +4,7 @@ This script is a Telegram bot written in Python using the `python-telegram-bot` 
 
 ## Requirements
 
-- Python 3.x
+- Python 3.10+ (the bot uses `match`/`case` syntax and the async `python-telegram-bot` v21+ API)
 
 Install the required packages using the following command:
 
