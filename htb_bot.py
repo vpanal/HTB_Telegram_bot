@@ -1,41 +1,67 @@
-# -<b>- coding: utf-8 -<b>-
-from telegram.ext import (Updater, CommandHandler, CallbackQueryHandler)
-from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-import requests
-import json
-from datetime import datetime, timedelta
-import threading
+# -*- coding: utf-8 -*-
+import asyncio
+import os
 import warnings
+from datetime import datetime, timedelta
 
-try:
-    # Importar configuracion de archivo config.py
-    from config import allowed_list, admin_list, TOKEN, users_ids, bearer, enlace_wiki, proxyenabled, proxy
-except:
-    #######Modifica esto para que funcione#######
+import requests
+from dotenv import load_dotenv
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import (
+    Application,
+    CallbackQueryHandler,
+    CommandHandler,
+    ContextTypes,
+)
 
-    #IDs de chat de telegram permitidas
-    allowed_list=(idchat, idchat) 
-    #IDs de chat de telegram permitidas
-    admin_list=(idchat, idchat)
-    #Token de bot de telegram
-    TOKEN='Telegram bot token'
-    #Usernames y ID de usuarios de HTB
-    users_ids = ['idnumer', 'idnumer', 'idnumer']
-    #Bearer Token de HTB
-    bearer='BearerToken'
-    #Enlace Wiki
-    enlace_wiki="Wiki_url"
-    #Configuracion del proxy
-    proxyenabled=False
-    proxy = {
-        "https": "http://127.0.0.1:8080"
-    }
+# Cargar variables de entorno desde el archivo .env (ver .env.example)
+load_dotenv()
+
+
+def _parse_id_list(value):
+    """Convierte 'id1,id2,id3' en una tupla de enteros."""
+    if not value:
+        return ()
+    return tuple(int(item.strip()) for item in value.split(',') if item.strip())
+
+
+def _parse_str_list(value):
+    """Convierte 'a,b,c' en una lista de strings."""
+    if not value:
+        return []
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
+#IDs de chat de telegram permitidas
+allowed_list = _parse_id_list(os.getenv("ALLOWED_CHAT_IDS"))
+#IDs de chat de telegram con permisos de administrador
+admin_list = _parse_id_list(os.getenv("ADMIN_CHAT_IDS"))
+#Token de bot de telegram
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+#Usernames y ID de usuarios de HTB
+users_ids = _parse_str_list(os.getenv("HTB_USER_IDS"))
+#Bearer Token de HTB
+bearer = os.getenv("HTB_BEARER_TOKEN")
+#Enlace Wiki
+enlace_wiki = os.getenv("WIKI_URL")
+#Configuracion del proxy
+proxyenabled = os.getenv("PROXY_ENABLED", "false").strip().lower() == "true"
+proxy = {
+    "https": os.getenv("PROXY_URL", "http://127.0.0.1:8080")
+}
+
+if not TOKEN:
+    raise SystemExit(
+        "Falta TELEGRAM_BOT_TOKEN. Copia .env.example a .env y completa los valores necesarios."
+    )
 
 # Inicialización de variables de entorno
 challenge_category = []
 challenge_list = []
 machine_list = []
 machine_unreleased = []
+fortresses = []
+seasons = []
 profile = {}
 profile_activity = {}
 profile_challenges = {}
@@ -57,14 +83,14 @@ if proxyenabled ==True:
 def htb_profile(uid):
     url = "https://labs.hackthebox.com/api/v4/user/profile/basic/" + str(uid)
     result = htb_request(url)
-    result = json.loads(result.text).get('profile')
+    result = result.json().get('profile')
     return result
 
 #HTB Profile challenges info
 def htb_profile_challenges(uid):
     url = "https://labs.hackthebox.com/api/v4/user/profile/progress/challenges/" + str(uid)
     result = htb_request(url)
-    result = json.loads(result.text).get('profile')
+    result = result.json().get('profile')
     return result
 
 #HTB Profile Activity info (with pagination support)
@@ -72,12 +98,12 @@ def htb_profile_activity(uid):
     all_activities = []
     page = 1
     last_page = None
-    
+
     while True:
         url = f"https://labs.hackthebox.com/api/v5/user/profile/activity/{uid}?page={page}&per_page=100"
         result = htb_request(url)
         try:
-            data = json.loads(result.text)
+            data = result.json()
             activities = data.get('data', [])
             if not activities:
                 break
@@ -96,27 +122,27 @@ def htb_profile_activity(uid):
                     if page >= total_pages:
                         break
             page += 1
-        except (json.JSONDecodeError, KeyError):
+        except (requests.exceptions.JSONDecodeError, KeyError):
             # If we can't parse the response or find meta data, try the next page anyway
             # but break after a reasonable number of attempts to avoid infinite loops
             if page > 20:  # Safety limit
                 break
             page += 1
-    
+
     return all_activities
 
 #HTB Country TOP
 def htb_country_users_top(country_code):
     url = f"https://labs.hackthebox.com/api/v4/rankings/country/{country_code}/members"
     result = htb_request(url)
-    result = json.loads(result.text).get('data').get('rankings', [])
+    result = result.json().get('data').get('rankings', [])
     return result
 
 #HTB Unreleased Machines info
 def htb_machine_unreleased():
     url = "https://labs.hackthebox.com/api/v5/machines?state=unreleased"
     result = htb_request(url)
-    result = json.loads(result.text).get('data')
+    result = result.json().get('data')
     return result
 
 #HTB Active Machines info
@@ -124,49 +150,49 @@ def htb_machine_list():
     #url="https://labs.hackthebox.com/api/v4/machine/list"
     url="https://labs.hackthebox.com/api/v4/machine/paginated?per_page=100"
     result = htb_request(url)
-    result = json.loads(result.text).get('data')
+    result = result.json().get('data')
     return result
 
 #HTB Active Challenges info
 def htb_challenge_list():
     url="https://labs.hackthebox.com/api/v4/challenge/list"
     result = htb_request(url)
-    result = json.loads(result.text).get('challenges')
+    result = result.json().get('challenges')
     return result
 
 #HTB Challenge Categories
 def htb_challenge_categories_list():
     url="https://labs.hackthebox.com/api/v4/challenge/categories/list"
     result = htb_request(url)
-    result = json.loads(result.text).get('info')
+    result = result.json().get('info')
     return result
 
 #HTB Fortresses
 def htb_fortresses():
     url="https://labs.hackthebox.com/api/v4/fortresses"
     result = htb_request(url)
-    result = json.loads(result.text).get('data')
+    result = result.json().get('data')
     return result
 
 def htb_season_list():
     url=f"https://labs.hackthebox.com/api/v4/season/list"
     result = htb_request(url)
-    result = json.loads(result.text).get('data')
+    result = result.json().get('data')
     return result
 
 def htb_season_position(seasonid, uid):
     try:
         url=f"https://labs.hackthebox.com/api/v4/season/end/{seasonid}/{uid}"
         result = htb_request(url)
-        result = json.loads(result.text).get('data')
-    except json.JSONDecodeError:
+        result = result.json().get('data')
+    except requests.exceptions.JSONDecodeError:
         result = None
     return result
 
 def htb_season_machines_number(seasonid):
     url = f"https://labs.hackthebox.com/api/v4/season/machines/{seasonid}"
     result = htb_request(url)
-    data = json.loads(result.text).get('data', [])
+    data = result.json().get('data', [])
     count = len(data)
     return count * 2
 
@@ -174,9 +200,9 @@ def htb_season_machines_number(seasonid):
 def htb_request(url):
     headers = {"Authorization": "Bearer " + bearer, "User-Agent": "htb_python"}
     if proxyenabled == True:
-        response = requests.request("GET", url, headers=headers, proxies=proxy, verify=False)
+        response = requests.request("GET", url, headers=headers, proxies=proxy, verify=False, timeout=30)
     else:
-        response = requests.request("GET", url, headers=headers)
+        response = requests.request("GET", url, headers=headers, timeout=30)
     return response
 
 #######Telegram Menus#######
@@ -325,7 +351,7 @@ def menu_challenge(icategory, idifficulty):
         name = entry['name']
         difficulty = entry['difficulty']
         category = entry['challenge_category_id']
-        
+
         if difficulty == idifficulty:
             if category == icategory:
                 names += name + '\n'
@@ -421,48 +447,48 @@ def menu_fortresses_info(id):
 def menu_season(page=0):
     total_seasons = len(seasons)
     total_pages = (total_seasons + menu_season_items_per_page - 1) // menu_season_items_per_page
-    
+
     # Validar página
     if page < 0:
         page = 0
     if page >= total_pages:
         page = total_pages - 1
-    
+
     # Calcular índices
     start_idx = page * menu_season_items_per_page
     end_idx = start_idx + menu_season_items_per_page
-    
+
     # Obtener temporadas para esta página
     page_seasons = seasons[start_idx:end_idx]
-    
+
     keyboard_buttons = []
-    
+
     # Añadir botones de temporadas
     for entry in page_seasons:
         sid = entry['id']
         callback = f'menu_season_info_{sid}'
         name = entry['name']
         keyboard_buttons.append([InlineKeyboardButton(name, callback_data=callback)])
-    
+
     # Añadir botones de navegación (siempre 2, vacíos si no aplica)
     if total_pages > 1:
         nav_buttons = []
-        
+
         if page > 0:
             nav_buttons.append(InlineKeyboardButton("◀ Previous", callback_data=f"menu_season_page_{page - 1}"))
         else:
             nav_buttons.append(InlineKeyboardButton(" ", callback_data="menu_season_page_0"))
-        
+
         if page < total_pages - 1:
             nav_buttons.append(InlineKeyboardButton("Next ▶", callback_data=f"menu_season_page_{page + 1}"))
         else:
             nav_buttons.append(InlineKeyboardButton(" ", callback_data=f"menu_season_page_{page}"))
-        
+
         keyboard_buttons.append(nav_buttons)
-    
+
     # Botón de atrás
     keyboard_buttons.append([InlineKeyboardButton("<< Back", callback_data="menu_main")])
-    
+
     keyboard = InlineKeyboardMarkup(keyboard_buttons)
     return keyboard
 
@@ -474,13 +500,13 @@ def menu_season_info(sid):
             break
     data = f'<b>{name}</b>\n'
     total_flags = season_machines_number.get(int(sid), 0)
-    
+
     # Recorrer cada usuario en users_ids
     for uid in users_ids:
         # Construir la clave compuesta
         key = f"{sid}{uid}"
         entry_list = season_data.get(key)
-        
+
         if entry_list:
             tier = entry_list.get('season').get('tier')
             if tier == 'Holo':
@@ -492,12 +518,12 @@ def menu_season_info(sid):
             pawned_flags = root_flags + user_flags
             userdata = f'{ranking} - {user} - {tier} - {pawned_flags}/{total_flags} Flags\n'
             data += userdata
-    
+
     return data
 
 #######Other functions#######
 
-#Cache HTB data
+#Cache HTB data (blocking; run via asyncio.to_thread from async handlers)
 def cache():
     def get_challenge_category():
         global challenge_category
@@ -534,7 +560,6 @@ def cache():
     def get_profiles():
         global profile, profile_activity, profile_challenges, users_list, menu_user, country_users_top
         users_list = []
-        profile_challenges
         for uid in users_ids:
             profile[uid] = htb_profile(uid)
             profile_activity[uid] = htb_profile_activity(uid)
@@ -545,6 +570,8 @@ def cache():
             new_user = {'user': str(profile[uid].get('name')), 'id': uid}
             users_list.append(new_user)
             menu_user=menu_user_function()
+
+    import threading
 
     threads = [
         threading.Thread(target=get_challenge_category),
@@ -579,30 +606,30 @@ def check_user_complete(id, type):
     result = ''
     for user_id in users_list:
         username = user_id['user']
-        
+
         activity_list = profile_activity.get(user_id['id'], [])
         if not isinstance(activity_list, list):
             activity_list = []
-            
+
         user = False
         root = False
         pwn = False
         fortress_flags = 0
         total_flags = 0  # Para saber cuántas flags tiene la fortaleza
-        
+
         # Obtener el total de flags de la fortaleza
         if type == 'fortress':
             for fortress in fortresses:  # Asumiendo que fortresses es tu lista de fortalezas
                 if int(fortress['id']) == int(id):
                     total_flags = fortress['number_of_flags']
                     break
-        
+
         for item in activity_list:
             if isinstance(item, dict):
                 item_id = item.get("id")
                 item_type = item.get("type")
                 fortress_id = item.get("fortressId")  # Importante: campo correcto para fortalezas
-                
+
                 # Para máquinas
                 if type == 'machine':
                     if item_id is not None and str(item_id) == str(id):
@@ -618,7 +645,7 @@ def check_user_complete(id, type):
                 elif type == 'fortress' and item_type == 'fortress':
                     if fortress_id is not None and str(fortress_id) == str(id):
                         fortress_flags += 1
-                        
+
         # Determinar el estado
         if root:
             status = '<b>🔥Rooted🔥</b>'
@@ -632,7 +659,7 @@ def check_user_complete(id, type):
             status = 'Pending'
 
         result = result + ' \n' + username + ' Status: ' + status
-    
+
     return result
 
 #Check challenge category name by id
@@ -646,45 +673,49 @@ def check_country_users_top(id_to_search, country_code):
             if str(item["id"]) == str(id_to_search):
                 countryrank = str(item["rank"])
                 return countryrank
-            
+
 #Edit message of telegram bot
-def edit_message(context, chat_id, message_id, text, keyboard):
-    context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode='HTML')
+async def edit_message(context, chat_id, message_id, text, keyboard):
+    await context.bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text, reply_markup=keyboard, parse_mode='HTML')
+
+#Refresh the HTB cache in a worker thread so the event loop keeps serving updates
+async def refresh_cache():
+    await asyncio.to_thread(cache)
 
 #######Telegram actions#######
 
 #Command /htb
-def start(update, context):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message.chat_id in allowed_list:
         response = "Choose action:"
-        context.bot.send_message(update.message.chat_id,response, reply_markup=menu_main)
-        cache()
+        await context.bot.send_message(update.message.chat_id, response, reply_markup=menu_main)
+        await refresh_cache()
     else:
         response = 'You are not authorized'
-        update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)
+        await update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
 
 #Command /help
-def help(update, context):
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message.chat_id in allowed_list:
         if update.message.chat_id in admin_list:
             response = 'Make /htb to use the bot\nMake /cachedate to view the date of cache\nMake /adduser to add users\nMake /purgeuser to purge users'
         else:
             response = 'Make /htb to use the bot'
-        update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)	
+        await update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
     else:
         response = 'You are not authorized'
-        update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)
+        await update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
 
 #Command /cachedate
-def cachedate(update, context):
+async def cachedate(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message.chat_id in admin_list:
-        update.message.reply_text(str(cache_date),parse_mode='HTML', disable_web_page_preview=True)
+        await update.message.reply_text(str(cache_date), parse_mode='HTML', disable_web_page_preview=True)
     else:
         response = 'You are not authorized'
-        update.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)
+        await update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
 
 # Command /adduser
-def add_user(update, context):
+async def add_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if update.message.chat_id in admin_list:
         args = context.args
         if len(args) == 1:
@@ -698,16 +729,16 @@ def add_user(update, context):
             else:
                 users_ids.append(new_user)
                 response = f"User with ID '{args[0]}' has been added."
-            cache()
+            await refresh_cache()
         else:
             response = "Usage: /adduser id,id"
-        update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
+        await update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
     else:
         response = 'You are not authorized'
-        update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
+        await update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
 
 #Command /purgeuser
-def purge_user(update, context):
+async def purge_user(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     global users_ids, menu_user
     if update.message.chat_id in admin_list:
         args = context.args
@@ -718,25 +749,25 @@ def purge_user(update, context):
                 for id_remove in split_ids:
                     if id_remove.strip() in users_ids:
                         users_ids.remove(id_remove.strip())
-                        cache()
+                        await refresh_cache()
                 response = f"Users with IDs '{id_to_remove}' have been purged."
             else:
                 if id_to_remove in users_ids:
                     users_ids.remove(id_to_remove)
-                    cache()
+                    await refresh_cache()
                     response = f"User with ID '{id_to_remove}' has been purged."
                 else:
                     response = "User ID doesn't exist."
         else:
             response = "Usage: /purgeuser id,id"
-        update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
+        await update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
     else:
         response = 'You are not authorized'
-        update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
+        await update.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
 
 
 #Command Buttons
-def handle_callback(update, context):
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     #Query
     query = update.callback_query
     data=query.data
@@ -746,15 +777,18 @@ def handle_callback(update, context):
     #If allowed
     if query.message.chat_id in allowed_list:
 
+        #Acknowledge the callback so Telegram stops showing the loading spinner
+        await query.answer()
+
         #Command executed
         print(data)
 
         #Check cachedate > 1 hour to cache data
         if datetime.now() - cache_date > timedelta(hours=1):
-            cache()
+            await refresh_cache()
 
         #Actions to do
-        
+
         match data:
             #menu_main
             case "menu_main":
@@ -770,7 +804,7 @@ def handle_callback(update, context):
             case "menu_unreleased":
                 text = menu_unreleased()
                 keyboard=back_button('menu_main')
-  
+
             #menu_machine_difficulty
             case "menu_machine_difficulty":
                 text = "Choose machine dificulty:"
@@ -807,7 +841,7 @@ def handle_callback(update, context):
                 selected_category = int(parts[3])
                 text = "Choose the challenge:"
                 keyboard = menu_challenge(selected_category, selected_difficulty)
-            
+
             #menu_challenge_info
             case data if data.startswith('menu_challenge_info_'):
                 challenge=data[len('menu_challenge_info_'):]
@@ -824,7 +858,7 @@ def handle_callback(update, context):
             case data if any(user['id'] == data for user in users_list):
                 text = menu_user_info(data)
                 keyboard=back_button('menu_user')
-            
+
             #menu_fortresses
             case 'menu_fortresses':
                 text = "Choose the fortress:"
@@ -835,14 +869,14 @@ def handle_callback(update, context):
                 fortres=data[len('menu_fortresses_info_'):]
                 text=menu_fortresses_info(fortres)
                 keyboard = back_button('menu_fortresses')
-            
+
             #menu_season
             case 'menu_season':
                 total_seasons = len(seasons)
                 total_pages = (total_seasons + menu_season_items_per_page - 1) // menu_season_items_per_page
                 text = f"Choose the season (Page 1/{total_pages}):"
                 keyboard=menu_season(0)
-            
+
             #menu_season_page pagination
             case data if data.startswith('menu_season_page_'):
                 page = int(data[len('menu_season_page_'):])
@@ -855,7 +889,7 @@ def handle_callback(update, context):
                     page = 0
                 text = f"Choose the season (Page {page + 1}/{total_pages}):"
                 keyboard=menu_season(page)
-                            
+
             #menu_season_info
             case data if data.startswith('menu_season_info_'):
                 sid=data[len('menu_season_info_'):]
@@ -865,28 +899,27 @@ def handle_callback(update, context):
             case _:
                 text='Unexpected error'
                 keyboard = back_button('menu_main')
-        
-        edit_message(context, chat_id, message_id, text, keyboard)
+
+        await edit_message(context, chat_id, message_id, text, keyboard)
     else:
         response = 'You are not authorized'
-        query.message.reply_text(response,parse_mode='HTML', disable_web_page_preview=True)
+        await query.answer()
+        await query.message.reply_text(response, parse_mode='HTML', disable_web_page_preview=True)
 
 #######Start bot#######
 def main():
-	updater=Updater(TOKEN, use_context=True)
-	dp=updater.dispatcher
+    application = Application.builder().token(TOKEN).build()
 
-	# Events that will trigger our bot.
-	dp.add_handler(CommandHandler('help',	help))
-	dp.add_handler(CommandHandler('htb',	start))
-	dp.add_handler(CommandHandler('adduser', add_user))
-	dp.add_handler(CommandHandler('purgeuser', purge_user))
-	dp.add_handler(CommandHandler('cachedate',	cachedate))
-	dp.add_handler(CallbackQueryHandler(handle_callback))
-	# Start bot
-	updater.start_polling()
-	# Listening
-	updater.idle()
+    # Events that will trigger our bot.
+    application.add_handler(CommandHandler('help', help_command))
+    application.add_handler(CommandHandler('htb', start))
+    application.add_handler(CommandHandler('adduser', add_user))
+    application.add_handler(CommandHandler('purgeuser', purge_user))
+    application.add_handler(CommandHandler('cachedate', cachedate))
+    application.add_handler(CallbackQueryHandler(handle_callback))
+
+    # Start bot and listen for updates until interrupted
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
-	main()
+    main()
