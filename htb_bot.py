@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 import asyncio
+import os
 import warnings
 from datetime import datetime, timedelta
 
 import requests
+from dotenv import load_dotenv
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     Application,
@@ -12,29 +14,46 @@ from telegram.ext import (
     ContextTypes,
 )
 
-try:
-    # Importar configuracion de archivo config.py
-    from config import allowed_list, admin_list, TOKEN, users_ids, bearer, enlace_wiki, proxyenabled, proxy
-except ImportError:
-    #######Modifica esto para que funcione#######
+# Cargar variables de entorno desde el archivo .env (ver .env.example)
+load_dotenv()
 
-    #IDs de chat de telegram permitidas
-    allowed_list=(idchat, idchat)
-    #IDs de chat de telegram permitidas
-    admin_list=(idchat, idchat)
-    #Token de bot de telegram
-    TOKEN='Telegram bot token'
-    #Usernames y ID de usuarios de HTB
-    users_ids = ['idnumer', 'idnumer', 'idnumer']
-    #Bearer Token de HTB
-    bearer='BearerToken'
-    #Enlace Wiki
-    enlace_wiki="Wiki_url"
-    #Configuracion del proxy
-    proxyenabled=False
-    proxy = {
-        "https": "http://127.0.0.1:8080"
-    }
+
+def _parse_id_list(value):
+    """Convierte 'id1,id2,id3' en una tupla de enteros."""
+    if not value:
+        return ()
+    return tuple(int(item.strip()) for item in value.split(',') if item.strip())
+
+
+def _parse_str_list(value):
+    """Convierte 'a,b,c' en una lista de strings."""
+    if not value:
+        return []
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
+#IDs de chat de telegram permitidas
+allowed_list = _parse_id_list(os.getenv("ALLOWED_CHAT_IDS"))
+#IDs de chat de telegram con permisos de administrador
+admin_list = _parse_id_list(os.getenv("ADMIN_CHAT_IDS"))
+#Token de bot de telegram
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+#Usernames y ID de usuarios de HTB
+users_ids = _parse_str_list(os.getenv("HTB_USER_IDS"))
+#Bearer Token de HTB
+bearer = os.getenv("HTB_BEARER_TOKEN")
+#Enlace Wiki
+enlace_wiki = os.getenv("WIKI_URL")
+#Configuracion del proxy
+proxyenabled = os.getenv("PROXY_ENABLED", "false").strip().lower() == "true"
+proxy = {
+    "https": os.getenv("PROXY_URL", "http://127.0.0.1:8080")
+}
+
+if not TOKEN:
+    raise SystemExit(
+        "Falta TELEGRAM_BOT_TOKEN. Copia .env.example a .env y completa los valores necesarios."
+    )
 
 # Inicialización de variables de entorno
 challenge_category = []
