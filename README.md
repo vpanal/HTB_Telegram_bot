@@ -60,13 +60,14 @@ The bot is configured using environment variables, loaded from a `.env` file (vi
    | `TELEGRAM_BOT_TOKEN` | Telegram bot token obtained from [BotFather](https://t.me/BotFather).                          |
    | `HTB_USER_IDS`       | Comma-separated Hack The Box user IDs to track (e.g. `1111,2222,3333`).                        |
    | `HTB_BEARER_TOKEN`   | Bearer Token obtained from the Hack The Box platform.                                          |
-   | `WIKI_URL`           | URL to your team's Wiki/Notion, shown as a button in the bot menu.                             |
-   | `PROXY_ENABLED`      | `true` or `false`. Enables routing HTB API requests through an HTTP(S) proxy (e.g. Burp Suite).|
+   | `WIKI_URL`           | URL to your team's Wiki/Notion, shown as a button in the bot menu (optional).                   |
+   | `CACHE_TTL_MINUTES`  | Minutes the cached HTB data stays valid before the bot queries the API again (default `60`).    |
+   | `PROXY_ENABLED`      | `true` or `false`. Routes HTB API requests through an HTTP(S) proxy (e.g. Burp Suite). **Local debugging only: it disables TLS certificate verification.** |
    | `PROXY_URL`          | Proxy URL to use when `PROXY_ENABLED=true` (e.g. `http://127.0.0.1:8080`).                     |
 
 3. Make sure you have a working Telegram bot. If you don't have one, create a new bot using BotFather on Telegram and obtain the bot token.
 
-> **Note:** if `TELEGRAM_BOT_TOKEN` is missing, the bot will refuse to start and remind you to configure your `.env` file.
+> **Note:** if `TELEGRAM_BOT_TOKEN` or `HTB_BEARER_TOKEN` are missing, the bot refuses to start and tells you which variables need to be filled in. If `ALLOWED_CHAT_IDS` is empty the bot starts but rejects every chat.
 
 ## Running the Bot
 
@@ -80,23 +81,48 @@ The bot will start running and listening for incoming messages and interactions.
 
 ## Bot Commands
 
-- `/start`: Start the bot and display the main menu to choose actions.
-- `/help`: Display a help message.
-  
-**Additional Commands:**
+- `/htb`: Start the bot and display the main menu to choose actions.
+- `/help`: Display a help message (the list adapts to whether you are an admin).
+- `/search <text>`: Search Hack The Box users and teams by name and get their IDs.
 
-- `/cachedate`: Displays the current date and time of the Hack The Box platform's cache from where the data is retrieved.
-- `/adduser`: Adds a new Hack The Box user to the list of users tracked by the bot.
-- `/purgeuser`: Removes a Hack The Box user from the list of users tracked by the bot.
+**Admin-only Commands:**
+
+- `/cachedate`: Displays the date and time of the cached Hack The Box data.
+- `/refresh`: Forces an immediate refresh of the cached data.
+- `/adduser <id[,id]>`: Adds Hack The Box users to the list of users tracked by the bot. Non-numeric IDs are rejected.
+- `/purgeuser <id[,id]>`: Removes Hack The Box users from the tracked list.
 
 ## Main Features
 
-The bot provides the following main features:
+The bot browses the Hack The Box platform through its internal API and tracks the
+progress of a fixed list of users (`HTB_USER_IDS`). Every content view shows, for
+each tracked user, whether they have already completed it.
 
-1. **Main Menu**: The main menu provides options to access different functionalities.
-2. **Machine Information**: The bot can fetch information about released machines, including their name, operating system, difficulty, IP, date, number of user owns, and number of root owns.
-3. **Unreleased Machines**: The bot can display information about unreleased machines, including their names, operating systems, and difficulties.
-4. **User Information**: The bot can fetch and display the basic profile information for specified Hack The Box users.
+1. **Machines**: latest active machine, machines by difficulty, and unreleased machines, with OS, difficulty, release date and user/root own counts.
+2. **Starting Point**: the three tiers with your completion percentage, and the machines inside each tier.
+3. **Challenges**: browse by category and difficulty, with solves, release date and category.
+4. **Sherlocks**: browse the DFIR labs by category, with difficulty, solves, rating, tags and XP.
+5. **Fortresses**: fortress list with flag count and per-user flag progress.
+6. **Pro Labs**: lab list with machine and flag counts, skill level, lab masters and whether your plan can play them.
+7. **Seasons**: season list with pagination and per-user tier, ranking and flags.
+8. **Rankings / Hall of Fame**: top users, teams and countries.
+9. **Users**: for each tracked user, the basic profile plus three extra views:
+   - **📊 Progress**: completion per content type (machines, challenges, sherlocks, fortresses, pro labs) and badge count.
+   - **⚡ XP**: level, level title, total XP and the daily streak (including whether it is at risk).
+   - **🏆 Seasons**: the user's rank and league in every season they played.
+
+### About the Hack The Box API
+
+The bot talks to the **internal, undocumented** API of `labs.hackthebox.com`
+(`/api/v4`, `/api/v5` and `/api/experience/v1`). It is not a public or supported
+API and it can change without notice, so all calls are defensive: a failing or
+changed endpoint degrades that single view into a "no data" message instead of
+breaking the bot. Only `GET` endpoints are used — the bot never submits flags,
+spawns VMs or writes anything to your account.
+
+Authentication uses a Bearer token. The recommended way to obtain one is to
+create an **App Token** in *Account Settings → API Tokens* of your HTB account
+and put it in `HTB_BEARER_TOKEN`.
 
 ## Important Note
 
